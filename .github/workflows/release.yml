@@ -1,0 +1,29 @@
+# A tag vX.Y.Z publishes this package to npm by trusted publishing, with provenance and no token.
+# The house style: codeberg.org/BelType/decisions, project/a-release-moves-three-remotes-at-once.md.
+# ponytail: the tests are not run here; they run on the machine before the tag is pushed. Add a test step when a release ever goes out untested.
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: The tag, package.json and the CHANGELOG name one version
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          test "$(node -p 'require("./package.json").version')" = "$v" || { echo "::error::package.json does not say $v"; exit 1; }
+          grep -q "^## $v " CHANGELOG.md || { echo "::error::CHANGELOG.md has no heading for $v"; exit 1; }
+      - run: pnpm install --frozen-lockfile
+      - run: npm publish --provenance --access public

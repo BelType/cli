@@ -7,7 +7,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://codeberg.org/BelType/cli.git"
+    "url": "git+https://github.com/BelType/cli.git"
   },
   "homepage": "https://codeberg.org/BelType/cli",
   "engines": {
@@ -42,5 +42,8 @@
     "@types/node": "^22.20.5",
     "mupdf": "1.28.1",
     "typescript": "7.0.2"
+  },
+  "bugs": {
+    "url": "https://codeberg.org/BelType/cli/issues"
   }
 }
