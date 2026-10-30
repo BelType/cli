@@ -44,6 +44,10 @@ Found while writing the sample, and left out of it until the companions print th
 - SVG text under `transform="rotate(…)"`: Caster draws it broken.
 - `content()` in `string-set` includes the heading's `::before` under Cicero, so the sample's running section reads "3. Results" from `content()` alone.
 
+## Known limits
+
+- **`--check` shares are inflated by a half-pixel slip.** A4 is 1122.5 px tall at 96 dpi; the screenshot rounds it to 1122 and mupdf to 1123, so every glyph edge below the slip differs. The 3–5 % on `paper` is mostly that, not a real fault: lines where the slip lands on whole pixels show clean. Read the shares as an upper bound until the comparison aligns the two.
+
 ## Requirements
 
 Node 22 or later, and Playwright's headless shell for `playwright-core` 1.63.0:
