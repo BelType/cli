@@ -22,8 +22,8 @@ importers:
         version: 1.63.0
     devDependencies:
       '@beltype/specimens':
-        specifier: link:../specimens
-        version: link:../specimens
+        specifier: 0.1.0
+        version: 0.1.0
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5
@@ -46,6 +46,10 @@ packages:
 
   '@beltype/common@0.1.1':
     resolution: {integrity: sha512-WXj/dcjx9DdwF8+cgIYEo0Bhfgun3BszBljccglTcP4+PV4gyXD1APxUo8jyRm+eWlg8XCM3ow6izutfq6yiGw==}
+    engines: {node: '>=22'}
+
+  '@beltype/specimens@0.1.0':
+    resolution: {integrity: sha512-8F34pZKrsg+bIOm+pvxCgxlyy6wGxpkLRtrpDiYk3cP5vg2XSDK2qPiP7G2/0JIbkywvjRDSZk+YllMlTuqgXA==}
     engines: {node: '>=22'}
 
   '@napi-rs/canvas-android-arm64@1.1.0':
@@ -290,6 +294,10 @@ snapshots:
       pdfjs-dist: 6.2.108
 
   '@beltype/common@0.1.1': {}
+
+  '@beltype/specimens@0.1.0':
+    dependencies:
+      '@beltype/common': 0.1.1
 
   '@napi-rs/canvas-android-arm64@1.1.0':
     optional: true
