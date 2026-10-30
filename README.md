@@ -3,15 +3,15 @@
 The BelType command line. It prints a finished HTML document to PDF: Cicero cuts the document into pages in the browser, and Caster prints the pages Cicero presented. Chromium's own print is never called, so the run needs only Playwright's bare headless shell.
 
 ```bash
-beltype print samples/paper/index.html            # writes samples/paper/index.pdf
-beltype print samples/paper/index.html -o paper.pdf
+beltype print paper/index.html            # writes paper/index.pdf
+beltype print paper/index.html -o paper.pdf
 ```
 
 The document is plain HTML, CSS and the files beside it. The run answers every request from the document's folder, on a made-up `.invalid` address, and refuses anything else by name: a document that asks for a file it does not have, or for anything on a network, prints nothing. Fonts must be declared with `@font-face` and their files, because Caster embeds every face it draws.
 
 ## The sample
 
-`samples/paper/` is a short scientific article on A4 (its data are invented). It exercises what a paged document needs:
+`paper`, from [`@beltype/specimens`](https://codeberg.org/BelType/specimens), is a short scientific article on A4 (its data are invented). It exercises what a paged document needs:
 
 - the page box, with margins and an `@page :first` that withholds the margin boxes on the title page;
 - margin boxes: a running title and a running section from named strings (`string-set`), and the folio from `counter(page)`;
@@ -21,7 +21,7 @@ The document is plain HTML, CSS and the files beside it. The run answers every r
 - `break-after: avoid` on headings and `break-inside: avoid` on figures;
 - `hyphens: auto`, the hyphen drawn where Blink breaks and extracted as a soft hyphen.
 
-Its fonts, Source Serif 4 and Source Sans 3, are under the SIL Open Font License (`samples/paper/fonts/`).
+Its fonts, Source Serif 4 and Source Sans 3, are under the SIL Open Font License, with their licences in the specimen's `fonts/`. A change to it is made in the specimens repository, and the pin here moves.
 
 ## What is not printed yet
 
@@ -46,6 +46,6 @@ The companions come from the organization's repositories as git dependencies, ea
 ```bash
 pnpm install
 pnpm run check    # tsc over src and test, strict
-pnpm test         # prints the sample and reads the file back with mupdf
+pnpm test         # prints the specimen and reads the file back with mupdf
 pnpm run build    # dist/, which the beltype command runs
 ```

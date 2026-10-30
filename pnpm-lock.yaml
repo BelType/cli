@@ -21,6 +21,9 @@ importers:
         specifier: 1.63.0
         version: 1.63.0
     devDependencies:
+      '@beltype/specimens':
+        specifier: link:../specimens
+        version: link:../specimens
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5

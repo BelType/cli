@@ -6,9 +6,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as mupdf from 'mupdf';
+import { specimen } from '@beltype/specimens';
 import { print } from '../src/print.ts';
 
-const SAMPLE = new URL('../samples/paper/index.html', import.meta.url).pathname;
+const SAMPLE = specimen('paper').entry;
 
 test('the sample paper prints, and its pages carry what the sheet asked for', async () => {
   const output = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'beltype-print-')), 'paper.pdf');
