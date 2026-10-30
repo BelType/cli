@@ -26,4 +26,7 @@ jobs:
           test "$(node -p 'require("./package.json").version')" = "$v" || { echo "::error::package.json does not say $v"; exit 1; }
           grep -q "^## $v " CHANGELOG.md || { echo "::error::CHANGELOG.md has no heading for $v"; exit 1; }
       - run: pnpm install --frozen-lockfile
-      - run: npm publish --provenance --access public
+      - name: Publish, unless this version is on npm already (a package's first version is published by hand)
+        run: |
+          at="$(node -p 'require("./package.json").name')@${GITHUB_REF_NAME#v}"
+          if npm view "$at" version >/dev/null 2>&1; then echo "$at is on npm already"; else npm publish --provenance --access public; fi
