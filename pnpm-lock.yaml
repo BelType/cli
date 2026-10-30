@@ -17,6 +17,9 @@ importers:
       '@beltype/common':
         specifier: 0.1.1
         version: 0.1.1
+      mupdf:
+        specifier: 1.28.1
+        version: 1.28.1
       playwright-core:
         specifier: 1.63.0
         version: 1.63.0
@@ -27,9 +30,6 @@ importers:
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5
-      mupdf:
-        specifier: 1.28.1
-        version: 1.28.1
       typescript:
         specifier: 7.0.2
         version: 7.0.2

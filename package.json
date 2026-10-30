@@ -1,6 +1,6 @@
 {
   "name": "@beltype/cli",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "beltype, the command line: a finished HTML document printed to PDF by Cicero and Caster in Chromium's headless shell.",
   "type": "module",
   "license": "MIT",
@@ -35,12 +35,12 @@
     "@beltype/caster": "0.1.3",
     "@beltype/cicero": "0.1.4",
     "@beltype/common": "0.1.1",
+    "mupdf": "1.28.1",
     "playwright-core": "1.63.0"
   },
   "devDependencies": {
     "@beltype/specimens": "0.1.0",
     "@types/node": "^22.20.5",
-    "mupdf": "1.28.1",
     "typescript": "7.0.2"
   },
   "bugs": {

@@ -1,11 +1,24 @@
 # beltype
 
-The BelType command line. It prints a finished HTML document to PDF: Cicero cuts the document into pages in the browser, and Caster prints the pages Cicero presented. Chromium's own print is never called, so the run needs only Playwright's bare headless shell.
+The BelType command line. It prints a finished HTML document to PDF: Cicero cuts the document into pages in the browser, and Caster prints the pages Cicero presented. There are two printers: Caster, the default, and Chromium's own print (`--printer chromium`), which prints the same pages Cicero presented. Under Caster the run needs only Playwright's bare headless shell.
 
 ```bash
 beltype print paper/index.html            # writes paper/index.pdf
 beltype print paper/index.html -o paper.pdf
+beltype print paper/index.html --printer chromium --check --trace trace.json
 ```
+
+## Flags
+
+One shape across BelType: every package declares a table of name, accepted values and default (`@beltype/common/flags`), and `--flag <owner>.<name>=<value>`, repeatable, sets a row of any of them. `beltype print --help` lists the tables. A value outside a row, or a name no table holds, is refused by name. The defaults reproduce the previous behaviour exactly.
+
+```bash
+beltype print paper/index.html --flag caster.shaper=fontkit --flag cicero.composed=true
+```
+
+- `--printer caster|chromium`: who prints the pages Cicero presented. Chromium prints them one sheet to a page; it refuses, naming `--printer caster`, when the pages are not all one size.
+- `--trace <file.json>`: where the run's time went. `process` is node's clock around each step (launch, context, load, cut, print, transfer, close, write), `cicero` is Cicero's own `performance.measure` entries, `caster` is Caster's report (`ms` per stage and `timing`; `null` under Chromium), with the versions and the resolved flags. It is written even when the run refuses, with the step that refused.
+- `--check`: the proof that the PDF is the screen. Each presented page is screenshotted at 96 dpi, the PDF is rasterised at 96 dpi and the pairs are diffed into `<name>.check/` (`screen-N.png`, `print-N.png`, `diff-N.png`, `check.json`). It reports a share of differing pixels per page and a mean, and never fails the run.
 
 The document is plain HTML, CSS and the files beside it. The run answers every request from the document's folder, on a made-up `.invalid` address, and refuses anything else by name: a document that asks for a file it does not have, or for anything on a network, prints nothing. Fonts must be declared with `@font-face` and their files, because Caster embeds every face it draws.
 
@@ -46,6 +59,6 @@ The companions come from the organization's repositories as git dependencies, ea
 ```bash
 pnpm install
 pnpm run check    # tsc over src and test, strict
-pnpm test         # prints the specimen and reads the file back with mupdf
+pnpm test         # prints the specimen under each printer, and reads the files back with mupdf
 pnpm run build    # dist/, which the beltype command runs
 ```

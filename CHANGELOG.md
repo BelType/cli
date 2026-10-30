@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4 — 2026-10-30
+
+- **Flags in one shape.** `--flag <owner>.<name>=<value>`, repeatable, sets a row of Caster's, Cicero's or the command line's own table, each declared with `@beltype/common/flags`. `--printer` and `--check` are the command line's rows spelled plainly. `beltype print --help` lists every table. Every default reproduces today's behaviour.
+- **`--printer chromium`.** Chromium's own print (`page.pdf()`) prints the pages Cicero presented, one sheet to a page; it refuses when the pages are not all one size. Caster stays the default. This reverses the earlier "one road" rule, at Egildo's request of 2026-10-30.
+- **`--trace <file.json>`.** Where a run's time went: node's clock around each step, Cicero's `performance.measure` entries, Caster's report timings, the versions and the resolved flags. Written even when the run refuses.
+- **`--check`.** Screenshots each presented page, rasterises the PDF at 96 dpi and diffs the pairs into `<name>.check/`. It reports and never fails.
+- **`mupdf` 1.28.1 is a dependency**, loaded only under `--check`. The import map the page gets now maps `@beltype/common/flags`, which Caster 0.1.4 imports. Needs `@beltype/common` 0.1.2, `@beltype/caster` 0.1.4 and `@beltype/cicero` 0.1.5.
+
 ## 0.1.3 — 2026-10-30
 
 - **The sample paper lives in `@beltype/specimens`.** `samples/` is gone; the test prints `specimen('paper').entry` from the dev dependency `@beltype/specimens` 0.1.0, and its assertions are unchanged. No code change in the command.
