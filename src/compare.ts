@@ -2,7 +2,7 @@
  * Rasterize a PDF and measure how far two renderings are apart.
  *
  * @remarks
- * Pages are drawn at 96 dpi, RGB, on white. A pixel differs when its largest channel difference exceeds {@link THRESHOLD} of 255. Pages of different sizes are compared over their common area and flagged. The numbers say how far apart two tools are, never which is right.
+ * Pages are drawn at 96 dpi, RGB, on white. A pixel differs when its largest channel difference exceeds {@link THRESHOLD} of 255 from every pixel within {@link NEIGHBOURHOOD} of it in the other raster. Pages of different sizes are compared over their common area and flagged. The numbers say how far apart two tools are, never which is right.
  *
  * Copied from the testbench's `src/compare.ts`, which keeps its own; one shared home waits until a third user appears.
  *
@@ -12,6 +12,14 @@
 import * as mupdf from 'mupdf';
 
 export const THRESHOLD = 32;
+
+/**
+ * How far a pixel may slip, in pixels, and still count as the same. A pixel differs only when nothing within this reach in the other raster is within {@link THRESHOLD} of it, and the same the other way round.
+ *
+ * @remarks
+ * The screen's pages sit at fractional heights on Cicero's stack (A4 is 1122.52 px), so the screenshot slips 0 to 1 px against mupdf's exact origin; and Skia and mupdf shade letter edges differently. Without the reach every glyph edge below the slip reads as a difference. This is the reftests' `fuzzy` idea (Web Platform Tests, Mozilla).
+ */
+export const NEIGHBOURHOOD = 1;
 
 export interface Raster {
   readonly width: number;
@@ -50,7 +58,24 @@ export function rasterize(pdf: Uint8Array, dpi = 96): { pages: Raster[]; pngs: U
   return { pages, pngs };
 }
 
-/** Compare two pages over their common area; the picture is that area, the reference faded and the differences red. */
+/** Whether the pixel at (x, y) of `from` is within the threshold of any pixel of `to` within {@link NEIGHBOURHOOD} of (x, y), clipped at the edges. */
+function matched(from: Raster, to: Raster, x: number, y: number, width: number, height: number): boolean {
+  const a = (y * from.width + x) * 3;
+  const r = from.rgb[a]!, g = from.rgb[a + 1]!, bl = from.rgb[a + 2]!;
+  for (let dy = -NEIGHBOURHOOD; dy <= NEIGHBOURHOOD; dy++) {
+    const yy = y + dy;
+    if (yy < 0 || yy >= height) continue;
+    for (let dx = -NEIGHBOURHOOD; dx <= NEIGHBOURHOOD; dx++) {
+      const xx = x + dx;
+      if (xx < 0 || xx >= width) continue;
+      const b = (yy * to.width + xx) * 3;
+      if (Math.abs(r - to.rgb[b]!) <= THRESHOLD && Math.abs(g - to.rgb[b + 1]!) <= THRESHOLD && Math.abs(bl - to.rgb[b + 2]!) <= THRESHOLD) return true;
+    }
+  }
+  return false;
+}
+
+/** Compare two pages over their common area; the picture is that area, the reference faded and the pixels that still differ after the slip red. */
 export function diffPage(ref: Raster, other: Raster): PageDiff {
   const width = Math.min(ref.width, other.width);
   const height = Math.min(ref.height, other.height);
@@ -59,11 +84,8 @@ export function diffPage(ref: Raster, other: Raster): PageDiff {
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const a = (y * ref.width + x) * 3;
-      const b = (y * other.width + x) * 3;
       const o = (y * width + x) * 3;
-      let max = 0;
-      for (let c = 0; c < 3; c++) max = Math.max(max, Math.abs(ref.rgb[a + c]! - other.rgb[b + c]!));
-      if (max > THRESHOLD) {
+      if (!matched(other, ref, x, y, width, height) || !matched(ref, other, x, y, width, height)) {
         differing++;
         out[o] = 255;
         out[o + 1] = 0;

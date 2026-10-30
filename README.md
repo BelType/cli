@@ -18,7 +18,7 @@ beltype print paper/index.html --flag caster.shaper=fontkit --flag cicero.compos
 
 - `--printer caster|chromium`: who prints the pages Cicero presented. Chromium prints them one sheet to a page; it refuses, naming `--printer caster`, when the pages are not all one size.
 - `--trace <file.json>`: where the run's time went. `process` is node's clock around each step (launch, context, load, cut, print, transfer, close, write), `cicero` is Cicero's own `performance.measure` entries, `caster` is Caster's report (`ms` per stage and `timing`; `null` under Chromium), with the versions and the resolved flags. It is written even when the run refuses, with the step that refused.
-- `--check`: the proof that the PDF is the screen. Each presented page is screenshotted at 96 dpi, the PDF is rasterised at 96 dpi and the pairs are diffed into `<name>.check/` (`screen-N.png`, `print-N.png`, `diff-N.png`, `check.json`). It reports a share of differing pixels per page and a mean, and never fails the run.
+- `--check`: the proof that the PDF is the screen. Each presented page is screenshotted at 96 dpi, the PDF is rasterised at 96 dpi and the pairs are diffed into `<name>.check/` (`screen-N.png`, `print-N.png`, `diff-N.png`, `check.json`). It reports a share of differing pixels per page and a mean, and never fails the run. It tolerates one pixel of slip, because the screen's pages sit at fractional heights (A4 is 1122.52 px) and Skia and mupdf shade letter edges differently.
 
 The document is plain HTML, CSS and the files beside it. The run answers every request from the document's folder, on a made-up `.invalid` address, and refuses anything else by name: a document that asks for a file it does not have, or for anything on a network, prints nothing. Fonts must be declared with `@font-face` and their files, because Caster embeds every face it draws.
 
@@ -43,10 +43,6 @@ Found while writing the sample, and left out of it until the companions print th
 - `counter(pages)` in a margin box: Caster refuses the content.
 - SVG text under `transform="rotate(…)"`: Caster draws it broken.
 - `content()` in `string-set` includes the heading's `::before` under Cicero, so the sample's running section reads "3. Results" from `content()` alone.
-
-## Known limits
-
-- **`--check` shares are inflated by a half-pixel slip.** A4 is 1122.5 px tall at 96 dpi; the screenshot rounds it to 1122 and mupdf to 1123, so every glyph edge below the slip differs. The 3–5 % on `paper` is mostly that, not a real fault: lines where the slip lands on whole pixels show clean. Read the shares as an upper bound until the comparison aligns the two.
 
 ## Requirements
 
