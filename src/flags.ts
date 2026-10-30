@@ -46,5 +46,5 @@ export function flagsHelp(): string {
   const rows = Object.values(TABLES).flatMap((t) => Object.entries(t.table).map(([name, spec]) => [`${t.owner}.${name}`, spec.values === null ? 'a positive number' : spec.values.map(String).join(' | '), String(spec.default)] as const));
   const width = Math.max(...rows.map((r) => r[0].length));
   const valuesWidth = Math.max(...rows.map((r) => r[1].length));
-  return rows.map(([flag, values, def]) => `  ${flag.padEnd(width)}  ${values.padEnd(valuesWidth)}  default ${def}`).join('\n');
+  return `${rows.map(([flag, values, def]) => `  ${flag.padEnd(width)}  ${values.padEnd(valuesWidth)}  default ${def}`).join('\n')}\n\n  beltype print runs with caster.instancing=workers unless given.`;
 }

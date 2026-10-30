@@ -37,7 +37,7 @@ export async function cutInPage(run: { cicero: Record<string, unknown>; measures
 }
 
 /** What Caster's report says of its own time, as the trace carries it. */
-export type CasterTrace = { ms: Record<string, number>; timing: unknown };
+export type CasterTrace = { ms: Record<string, number>; timing: unknown; fonts: { id: string; ms: unknown }[] };
 
 /**
  * Caster prints the presented pages; the bytes cross back as base64, the one form `evaluate` carries intact.
@@ -54,7 +54,7 @@ export async function printInPage(options: Record<string, unknown>): Promise<{ b
     const bytes: Uint8Array = printed.bytes;
     let binary = '';
     for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    return { base64: btoa(binary), pages: printed.report.timing?.pages ?? 0, words: printed.report.timing?.words ?? 0, warnings: printed.report.warnings ?? [], printMs, caster: { ms: printed.report.ms ?? {}, timing: printed.report.timing ?? null } };
+    return { base64: btoa(binary), pages: printed.report.timing?.pages ?? 0, words: printed.report.timing?.words ?? 0, warnings: printed.report.warnings ?? [], printMs, caster: { ms: printed.report.ms ?? {}, timing: printed.report.timing ?? null, fonts: (printed.report.emission?.faces ?? []).map((f: { id: string; ms?: unknown }) => ({ id: f.id, ms: f.ms ?? null })) } };
   } catch (error) {
     return { refused: String((error as Error | undefined)?.message ?? error), at: 'print' };
   }
