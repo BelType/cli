@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 — 2026-10-30
+
+- **The companions come from npm.** `@beltype/caster`, `@beltype/cicero` and `@beltype/common` were Codeberg git addresses over SSH, which only an installer with a Codeberg key could reach; they are now `0.1.3`, `0.1.4` and `0.1.1`, exact, from npmjs.com. `private` is gone from `package.json`, so the package can be published. No code change.
+
 ## 0.1.1 — 2026-10-30
 
 - **`@beltype/caster` moves to v0.1.2**, which draws a word Blink hyphenates as Blink lays it out.

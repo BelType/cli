@@ -9,14 +9,14 @@ importers:
   .:
     dependencies:
       '@beltype/caster':
-        specifier: git+ssh://git@codeberg.org/BelType/caster.git#v0.1.2
-        version: git+ssh://git@codeberg.org/BelType/caster.git#271c6ca458534e4a74e989d09536d27aee82c438
+        specifier: 0.1.3
+        version: 0.1.3
       '@beltype/cicero':
-        specifier: git+ssh://git@codeberg.org/BelType/cicero.git#v0.1.3
-        version: git+ssh://git@codeberg.org/BelType/cicero.git#eececc69c70a6f81029fc94a4ab116435ae4cf60
+        specifier: 0.1.4
+        version: 0.1.4
       '@beltype/common':
-        specifier: git+ssh://git@codeberg.org/BelType/common.git#v0.1.0
-        version: git+ssh://git@codeberg.org/BelType/common.git#ae81faddd9a06ff808b73e2960a44308897496aa
+        specifier: 0.1.1
+        version: 0.1.1
       playwright-core:
         specifier: 1.63.0
         version: 1.63.0
@@ -33,19 +33,16 @@ importers:
 
 packages:
 
-  '@beltype/caster@git+ssh://git@codeberg.org/BelType/caster.git#271c6ca458534e4a74e989d09536d27aee82c438':
-    resolution: {commit: 271c6ca458534e4a74e989d09536d27aee82c438, repo: ssh://git@codeberg.org/BelType/caster.git, type: git}
-    version: 0.1.2
+  '@beltype/caster@0.1.3':
+    resolution: {integrity: sha512-lBRPbef4obmLYn7xRQMoSovCt/o+Ar96lLcqs50KqrWHkBjOgNlbAQKNjtB6SInzhpUmoIUlntI9dWW+0ftCcQ==}
     engines: {node: '>=22'}
 
-  '@beltype/cicero@git+ssh://git@codeberg.org/BelType/cicero.git#eececc69c70a6f81029fc94a4ab116435ae4cf60':
-    resolution: {commit: eececc69c70a6f81029fc94a4ab116435ae4cf60, repo: ssh://git@codeberg.org/BelType/cicero.git, type: git}
-    version: 0.1.3
+  '@beltype/cicero@0.1.4':
+    resolution: {integrity: sha512-xk/yMCuDh/CNhMx97V6Rb+btTYPSROku0oSlieR0z51m3FE0KVkKa1A97HC6bnBDuUFmQnvVziOwH3DhR/ZZvA==}
     engines: {node: '>=22'}
 
-  '@beltype/common@git+ssh://git@codeberg.org/BelType/common.git#ae81faddd9a06ff808b73e2960a44308897496aa':
-    resolution: {commit: ae81faddd9a06ff808b73e2960a44308897496aa, repo: ssh://git@codeberg.org/BelType/common.git, type: git}
-    version: 0.1.0
+  '@beltype/common@0.1.1':
+    resolution: {integrity: sha512-WXj/dcjx9DdwF8+cgIYEo0Bhfgun3BszBljccglTcP4+PV4gyXD1APxUo8jyRm+eWlg8XCM3ow6izutfq6yiGw==}
     engines: {node: '>=22'}
 
   '@napi-rs/canvas-android-arm64@1.1.0':
@@ -279,17 +276,17 @@ packages:
 
 snapshots:
 
-  '@beltype/caster@git+ssh://git@codeberg.org/BelType/caster.git#271c6ca458534e4a74e989d09536d27aee82c438':
+  '@beltype/caster@0.1.3':
     dependencies:
-      '@beltype/common': git+ssh://git@codeberg.org/BelType/common.git#ae81faddd9a06ff808b73e2960a44308897496aa
+      '@beltype/common': 0.1.1
 
-  '@beltype/cicero@git+ssh://git@codeberg.org/BelType/cicero.git#eececc69c70a6f81029fc94a4ab116435ae4cf60':
+  '@beltype/cicero@0.1.4':
     dependencies:
-      '@beltype/common': git+ssh://git@codeberg.org/BelType/common.git#ae81faddd9a06ff808b73e2960a44308897496aa
+      '@beltype/common': 0.1.1
       css-tree: 3.2.1
       pdfjs-dist: 6.2.108
 
-  '@beltype/common@git+ssh://git@codeberg.org/BelType/common.git#ae81faddd9a06ff808b73e2960a44308897496aa': {}
+  '@beltype/common@0.1.1': {}
 
   '@napi-rs/canvas-android-arm64@1.1.0':
     optional: true
