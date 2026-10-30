@@ -1,6 +1,6 @@
 {
   "name": "@beltype/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "beltype, the command line: a finished HTML document printed to PDF by Cicero and Caster in Chromium's headless shell.",
   "type": "module",
@@ -33,7 +33,7 @@
     ]
   },
   "dependencies": {
-    "@beltype/caster": "git+ssh://git@codeberg.org/BelType/caster.git#v0.1.1",
+    "@beltype/caster": "git+ssh://git@codeberg.org/BelType/caster.git#v0.1.2",
     "@beltype/cicero": "git+ssh://git@codeberg.org/BelType/cicero.git#v0.1.3",
     "@beltype/common": "git+ssh://git@codeberg.org/BelType/common.git#v0.1.0",
     "playwright-core": "1.63.0"

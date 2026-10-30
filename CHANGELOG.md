@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 — 2026-10-30
+
+- **`@beltype/caster` moves to v0.1.2**, which draws a word Blink hyphenates as Blink lays it out.
+- **The sample paper sets `hyphens: auto`** again, and the test holds that a line ends in a hyphenated word.
+
 ## 0.1.0 — 2026-10-30
 
 - **`beltype print <file.html> [-o <file.pdf>]`**: a finished HTML document to PDF through Cicero and Caster in Playwright's headless shell, with no Chromium print. Every request is answered from the document's folder or the companions' built files on a made-up `.invalid` origin; anything else is refused by name and no file is written.

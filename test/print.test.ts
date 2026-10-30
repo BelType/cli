@@ -23,6 +23,8 @@ test('the sample paper prints, and its pages carry what the sheet asked for', as
   assert.match(all, /3\. Results/);
   assert.match(all, /\(Figure 1, Table 1\)/);
   assert.match(all, /Results \(p\. \d\)/);
+  // hyphens: auto: Blink's breaks reach the file as a drawn hyphen standing for a soft hyphen.
+  assert.match(all, /\u00AD\n/, 'a line ends in a hyphenated word');
   // :first suppresses the margin boxes; every later page carries the running title and its own folio.
   assert.ok(!pages[0]!.includes('Leaf litter decomposition along an altitudinal gradient\n'), 'no running title on the title page');
   pages.slice(1).forEach((text, i) => {

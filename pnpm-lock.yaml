@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@beltype/caster':
-        specifier: git+ssh://git@codeberg.org/BelType/caster.git#v0.1.1
-        version: git+ssh://git@codeberg.org/BelType/caster.git#c7aecb66a05850615c42855a4f840dce9c98b38c
+        specifier: git+ssh://git@codeberg.org/BelType/caster.git#v0.1.2
+        version: git+ssh://git@codeberg.org/BelType/caster.git#271c6ca458534e4a74e989d09536d27aee82c438
       '@beltype/cicero':
         specifier: git+ssh://git@codeberg.org/BelType/cicero.git#v0.1.3
         version: git+ssh://git@codeberg.org/BelType/cicero.git#eececc69c70a6f81029fc94a4ab116435ae4cf60
@@ -33,9 +33,9 @@ importers:
 
 packages:
 
-  '@beltype/caster@git+ssh://git@codeberg.org/BelType/caster.git#c7aecb66a05850615c42855a4f840dce9c98b38c':
-    resolution: {commit: c7aecb66a05850615c42855a4f840dce9c98b38c, repo: ssh://git@codeberg.org/BelType/caster.git, type: git}
-    version: 0.1.1
+  '@beltype/caster@git+ssh://git@codeberg.org/BelType/caster.git#271c6ca458534e4a74e989d09536d27aee82c438':
+    resolution: {commit: 271c6ca458534e4a74e989d09536d27aee82c438, repo: ssh://git@codeberg.org/BelType/caster.git, type: git}
+    version: 0.1.2
     engines: {node: '>=22'}
 
   '@beltype/cicero@git+ssh://git@codeberg.org/BelType/cicero.git#eececc69c70a6f81029fc94a4ab116435ae4cf60':
@@ -279,7 +279,7 @@ packages:
 
 snapshots:
 
-  '@beltype/caster@git+ssh://git@codeberg.org/BelType/caster.git#c7aecb66a05850615c42855a4f840dce9c98b38c':
+  '@beltype/caster@git+ssh://git@codeberg.org/BelType/caster.git#271c6ca458534e4a74e989d09536d27aee82c438':
     dependencies:
       '@beltype/common': git+ssh://git@codeberg.org/BelType/common.git#ae81faddd9a06ff808b73e2960a44308897496aa
 

@@ -20,7 +20,7 @@
   @bottom-center { content: none; }
 }
 
-html { font: 400 10.5pt/1.45 "Source Serif 4", serif; color: var(--ink); }
+html { font: 400 10.5pt/1.45 "Source Serif 4", serif; color: var(--ink); hyphens: auto; }
 body { margin: 0; counter-reset: section figure table; }
 p { margin: 0; text-align: justify; orphans: 2; widows: 2; }
 p + p { text-indent: 1.2em; }
