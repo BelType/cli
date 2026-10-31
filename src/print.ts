@@ -56,8 +56,7 @@ const round = (ms: number) => Math.round(ms * 10) / 10;
 export async function print(input: string, output: string, options: PrintOptions = {}): Promise<PrintResult> {
   const started = performance.now();
   const flags = {
-    // The command line cuts the variable faces' instances in workers unless told otherwise: its pages can start them, and Caster's own default (`main`) is for hosts that cannot.
-    caster: casterFlags.resolve({ instancing: 'workers', ...options.given?.caster } as never),
+    caster: casterFlags.resolve(options.given?.caster as never),
     cicero: ciceroFlags.resolve(options.given?.cicero as never),
     beltype: cliFlags.resolve(options.given?.beltype as never)
   };

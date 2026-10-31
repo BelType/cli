@@ -6,7 +6,7 @@
 - **`--printer chromium`.** Chromium's own print (`page.pdf()`) prints the pages Cicero presented, one sheet to a page; it refuses when the pages are not all one size. Caster stays the default. This reverses the earlier "one road" rule, at Egildo's request of 2026-10-30.
 - **`--trace <file.json>`.** Where a run's time went: node's clock around each step, Cicero's `performance.measure` entries, Caster's report timings, the versions and the resolved flags. Written even when the run refuses.
 - **`--check`.** Screenshots each presented page, rasterises the PDF at 96 dpi and diffs the pairs into `<name>.check/`. It reports and never fails.
-- **The variable faces' instances are cut in workers.** `beltype print` runs with `caster.instancing=workers` unless given (Caster's own default is `main`), which needs `@beltype/caster` 0.1.4. The trace gains `caster.fonts`, the per-instance milliseconds of Caster's report.
+- **The trace gains `caster.fonts`**, the per-instance milliseconds of Caster's report.
 - **`mupdf` 1.28.1 is a dependency**, loaded only under `--check`. The import map the page gets now maps `@beltype/common/flags`, which Caster 0.1.4 imports. Needs `@beltype/common` 0.1.2, `@beltype/caster` 0.1.4 and `@beltype/cicero` 0.1.5.
 
 ## 0.1.3 — 2026-10-30
