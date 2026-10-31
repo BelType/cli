@@ -7,12 +7,8 @@
  * @packageDocumentation
  */
 
-import { ciceroFlags } from '@beltype/cicero';
-import { casterFlags } from '@beltype/caster';
 import { defineFlags } from '@beltype/common/flags';
 import { ValidationError } from '@beltype/common/errors';
-
-export { casterFlags, ciceroFlags };
 
 export const cliFlags = defineFlags('beltype', {
   /** Default `'caster'`: Cicero cuts and Caster prints. `'chromium'` has Chromium print the pages Cicero presented, which is what `check` compares Caster against. */
@@ -21,29 +17,45 @@ export const cliFlags = defineFlags('beltype', {
   check: { values: [false, true], default: false }
 });
 
-/** Every table the command line exposes, by owner. */
-export const TABLES = { caster: casterFlags, cicero: ciceroFlags, beltype: cliFlags } as const;
-export type Owner = keyof typeof TABLES;
+/**
+ * The tables of the packages, each loaded the first time a run needs it.
+ *
+ * @remarks
+ * `import('@beltype/caster')` loads every module of Caster, which costs about 40 ms in Node, and a plain print does not read its table: the page resolves Caster's defaults itself. So the table is imported when a `--flag caster.*` names it, for `--help`, and for the trace's `flags` field.
+ */
+const LOADERS = {
+  caster: async () => (await import('@beltype/caster')).casterFlags,
+  cicero: async () => (await import('@beltype/cicero')).ciceroFlags,
+  beltype: async () => cliFlags
+} as const;
+export type Owner = keyof typeof LOADERS;
+const OWNERS = Object.keys(LOADERS);
+
+/** The table of one owner. */
+export function tableOf<K extends Owner>(owner: K): ReturnType<(typeof LOADERS)[K]> {
+  return LOADERS[owner]() as ReturnType<(typeof LOADERS)[K]>;
+}
 
 /** The values asked for on the command line, by owner and flag name. */
 export type Given = Record<Owner, Record<string, unknown>>;
 
-/** Read `owner.name=value` strings (the repeated `--flag`) against the tables. @throws {ValidationError} on a malformed string or an unknown owner; {FlagError} on an unknown name or a bad value. */
-export function parseFlagArgs(args: readonly string[]): Given {
+/** Read `owner.name=value` strings (the repeated `--flag`) against the tables, loading only the tables they name. @throws {ValidationError} on a malformed string or an unknown owner; {FlagError} on an unknown name or a bad value. */
+export async function parseFlagArgs(args: readonly string[]): Promise<Given> {
   const given: Given = { caster: {}, cicero: {}, beltype: {} };
   for (const arg of args) {
     const m = /^([^.=]+)\.([^=]+)=(.*)$/s.exec(arg);
     if (!m) throw new ValidationError(`beltype: --flag takes <owner>.<name>=<value>; got "${arg}".`);
     const [, owner, name, raw] = m as unknown as [string, string, string, string];
-    if (!Object.hasOwn(TABLES, owner)) throw new ValidationError(`beltype: no flag owner '${owner}'. The owners are ${Object.keys(TABLES).join(', ')}.`);
-    given[owner as Owner][name] = TABLES[owner as Owner].parse(name, raw);
+    if (!Object.hasOwn(LOADERS, owner)) throw new ValidationError(`beltype: no flag owner '${owner}'. The owners are ${OWNERS.join(', ')}.`);
+    given[owner as Owner][name] = (await tableOf(owner as Owner)).parse(name, raw);
   }
   return given;
 }
 
 /** Every table, one row a flag: owner, name, values and default. */
-export function flagsHelp(): string {
-  const rows = Object.values(TABLES).flatMap((t) => Object.entries(t.table).map(([name, spec]) => [`${t.owner}.${name}`, spec.values === null ? 'a positive number' : spec.values.map(String).join(' | '), String(spec.default)] as const));
+export async function flagsHelp(): Promise<string> {
+  const tables = await Promise.all(OWNERS.map((owner) => tableOf(owner as Owner)));
+  const rows = tables.flatMap((t) => Object.entries(t.table).map(([name, spec]) => [`${t.owner}.${name}`, spec.values === null ? 'a positive number' : spec.values.map(String).join(' | '), String(spec.default)] as const));
   const width = Math.max(...rows.map((r) => r[0].length));
   const valuesWidth = Math.max(...rows.map((r) => r[1].length));
   return `${rows.map(([flag, values, def]) => `  ${flag.padEnd(width)}  ${values.padEnd(valuesWidth)}  default ${def}`).join('\n')}`;

@@ -9,6 +9,7 @@
 - **The trace gains `caster.fonts`**, the per-instance milliseconds of Caster's report.
 - **`mupdf` 1.28.1 is a dependency**, loaded only under `--check`. The import map the page gets now maps `@beltype/common/flags`, which Caster 0.1.4 imports. Needs `@beltype/common` 0.1.2, `@beltype/caster` 0.1.4 and `@beltype/cicero` 0.1.5.
 - **Node's compile cache is on.** `cli.ts` is now a stub that calls `module.enableCompileCache()` and imports `main.ts`, where the command lives. A warm run of the sample paper saves about 35 ms of the 280 ms Node spends before `print()` starts. The cache is Node's own, in the temporary directory (`node-compile-cache`), about 2 MB.
+- **A plain print does not load Caster's flag table in Node.** `flags.ts` imports each package's table when it is needed: `--flag caster.*`, `--help`, and the trace's `flags` field (loaded after the total is taken, so the trace does not count it). Caster resolves its own defaults in the page. About 30 ms off a warm print of the sample paper. Cicero's table is still loaded, because the run needs Cicero's engine in Node anyway.
 
 ## 0.1.3 — 2026-10-30
 

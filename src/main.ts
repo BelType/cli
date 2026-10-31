@@ -28,14 +28,14 @@ async function main(argv: string[]): Promise<number> {
   } });
   const [verb, input, ...rest] = positionals;
   if (values.help || !verb) {
-    console.log(`${USAGE}\n\nflags:\n${flagsHelp()}`);
+    console.log(`${USAGE}\n\nflags:\n${await flagsHelp()}`);
     return values.help ? 0 : 1;
   }
   if (verb !== 'print' || !input || rest.length) {
     console.error(verb !== 'print' ? `beltype: no verb '${verb}'\n${USAGE}` : USAGE);
     return 1;
   }
-  const given = parseFlagArgs(values.flag ?? []);
+  const given = await parseFlagArgs(values.flag ?? []);
   if (values.printer !== undefined) given.beltype['printer'] = cliFlags.parse('printer', values.printer);
   if (values.check) given.beltype['check'] = true;
   const output = values.output ?? input.replace(/\.html?$/i, '') + '.pdf';

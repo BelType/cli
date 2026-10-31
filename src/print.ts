@@ -13,11 +13,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, type BrowserContext } from 'playwright-core';
-import { ciceroEngine } from '@beltype/cicero';
+import { ciceroEngine, ciceroFlags } from '@beltype/cicero';
 import { BuildError } from '@beltype/common/errors';
 import { contentType } from '@beltype/common/mime';
 import { cutInPage, printInPage, pageSizesInPage, chromiumSheetInPage, type CasterTrace, type Measure, type Refusal } from './in-page.ts';
-import { casterFlags, ciceroFlags, cliFlags, type Given } from './flags.ts';
+import { cliFlags, tableOf, type Given } from './flags.ts';
 import { chromiumSheet } from './chromium.ts';
 import { screenshotPages, checkPages, type CheckResult } from './check.ts';
 
@@ -55,12 +55,13 @@ const round = (ms: number) => Math.round(ms * 10) / 10;
  */
 export async function print(input: string, output: string, options: PrintOptions = {}): Promise<PrintResult> {
   const started = performance.now();
+  // Caster's own defaults are resolved in the page by `caster.print`, so the given values are all the page is handed; its table is loaded for the trace alone, at the end.
   const flags = {
-    caster: casterFlags.resolve(options.given?.caster as never),
+    caster: options.given?.caster ?? {},
     cicero: ciceroFlags.resolve(options.given?.cicero as never),
     beltype: cliFlags.resolve(options.given?.beltype as never)
   };
-  const trace: Trace = { process: {}, cicero: [], caster: null, versions: {}, flags };
+  const trace: Trace = { process: {}, cicero: [], caster: null, versions: {}, flags: {} };
   let mark = started;
   const lap = (key: string) => {
     const now = performance.now();
@@ -157,6 +158,8 @@ export async function print(input: string, output: string, options: PrintOptions
     if (options.trace !== undefined) {
       trace.process['total'] = round(performance.now() - started);
       trace.versions = versions(chromiumVersion);
+      // After the total: importing Caster's table here costs about 40 ms in Node, which is not the run's.
+      trace.flags = { ...flags, caster: (await tableOf('caster')).resolve(flags.caster as never) };
       fs.mkdirSync(path.dirname(path.resolve(options.trace)), { recursive: true });
       fs.writeFileSync(options.trace, JSON.stringify(trace, null, 2));
     }
