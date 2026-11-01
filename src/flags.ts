@@ -25,7 +25,7 @@ export const cliFlags = defineFlags('beltype', {
  */
 const LOADERS = {
   caster: async () => (await import('@beltype/caster')).casterFlags,
-  cicero: async () => (await import('@beltype/cicero')).ciceroFlags,
+  cicero: async () => (await import('@beltype/cicero/flags')).ciceroFlags,
   beltype: async () => cliFlags
 } as const;
 export type Owner = keyof typeof LOADERS;

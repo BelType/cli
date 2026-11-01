@@ -1,4 +1,4 @@
-// A plain print does not load Caster in Node: the page resolves Caster's defaults itself, and the table is imported only for --flag caster.*, --help and the trace.
+// A plain print does not load Caster, or Cicero's sheet rewriter (css-tree), in Node: the page resolves Caster's defaults itself, and the table is imported only for --flag caster.*, --help and the trace.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,4 +22,9 @@ test('a plain print loads no Caster module in Node', async () => {
   assert.ok(resolved.length > 50, `${resolved.length} loads seen`);
   const caster = resolved.filter((url) => /\/caster\/(dist|src)\//.test(url));
   assert.deepEqual(caster, []);
+});
+
+test('a plain print loads no Cicero sheet rewriter and no css-tree in Node', () => {
+  const heavy = resolved.filter((url) => /\/cicero\/dist\/seam\/(rewrite|csstree)|\/css-tree\//.test(url));
+  assert.deepEqual(heavy, []);
 });
