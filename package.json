@@ -33,7 +33,7 @@
     ]
   },
   "dependencies": {
-    "@beltype/caster": "0.1.6",
+    "@beltype/caster": "0.1.7",
     "@beltype/cicero": "0.1.6",
     "@beltype/common": "0.1.2",
     "mupdf": "1.28.1",
