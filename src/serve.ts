@@ -36,6 +36,16 @@ const paragraph = (n: number) => Array.from({ length: 90 }, (_, i) => WORDS[(i *
 /** Plain paragraphs and one heading, in the one face the CLI ships for it (`assets/warmup/`, SIL OFL): neither Cicero nor Caster supplies a default face, and Caster refuses a document with none. */
 const WARMUP = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Warm-up</title><style>@font-face { font-family: Warm; src: url(warm.woff2) format("woff2"); font-weight: 200 900 } @page { size: A4; margin: 20mm } body { font: 11pt/1.4 Warm }</style></head><body><h1>Warm-up</h1>${Array.from({ length: 16 }, (_, n) => `<p>${paragraph(n)}</p>`).join('')}</body></html>`;
 
+/** Milliseconds per step of one print, by name. */
+type Steps = Record<string, number>;
+
+const lapper = (steps: Steps) => {
+  const began: Record<string, number> = {};
+  return { start: (name: string) => { began[name] = performance.now(); }, end: (name: string) => { steps[name] = performance.now() - (began[name] ?? performance.now()); } };
+};
+
+const stepsLine = (steps: Steps, printed: Printed) => `${['page', 'load', 'cut', 'print', 'close'].map((n) => `${n} ${Math.round(steps[n] ?? 0)}`).join(', ')}; caster ${Object.entries(printed.caster?.ms ?? {}).map(([k, v]) => `${k} ${Math.round(Number(v))}`).join(', ')}`;
+
 class HttpError extends Error {
   status: number;
   constructor(status: number, message: string) { super(message); this.status = status; }
@@ -62,7 +72,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
   };
 
   /** Run `html` and `files` through the print's road on a new page; the folder and the page are gone after. */
-  const render = async (files: Map<string, Uint8Array>, given: Given, created: string | undefined): Promise<Printed> => {
+  const render = async (files: Map<string, Uint8Array>, given: Given, created: string | undefined, steps: Steps = {}): Promise<Printed> => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'beltype-serve-'));
     try {
       for (const [name, bytes] of files) {
@@ -74,14 +84,20 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       const docPath = '/index.html';
       const served = servedHtml(Buffer.from(files.get('index.html')!).toString('utf8'));
       missing.clear();
+      const lapped = lapper(steps);
+      lapped.start('page');
       const page = await context!.newPage();
       try {
         await routeDocument(page, missing, { root, docPath, served });
-        const printed = await printOnPage(page, missing, flags, { docPath, sharedWriter: true, ...(created !== undefined ? { created } : {}) });
+        lapped.end('page');
+        const printed = await printOnPage(page, missing, flags, { docPath, sharedWriter: true, progress: { step: lapped.start, lap: lapped.end }, ...(created !== undefined ? { created } : {}) });
+        lapped.end('print');
         if (missing.size) throw refusal(missing, null);
         return printed;
       } finally {
+        lapped.start('close');
         await page.close().catch(() => {});
+        lapped.end('close');
       }
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
@@ -161,7 +177,8 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       const id = prints + 1;
       log(`beltype serve: print ${id} started`);
       const t0 = performance.now();
-      const run = render(files, given, created);
+      const steps: Steps = {};
+      const run = render(files, given, created, steps);
       let timer: NodeJS.Timeout | undefined;
       const limit = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new HttpError(504, `beltype serve: the print took over ${options.timeout / 1000} s.`)), options.timeout); });
       try {
@@ -169,6 +186,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
         prints++;
         sinceStart++;
         log(`beltype serve: print ${id}: 200, ${printed.pages} pages, ${writer}, ${Math.round(performance.now() - t0)} ms (write ${printed.caster?.ms['emit'] ?? '?'} ms)`);
+        log(`beltype serve: print ${id}: ${stepsLine(steps, printed)}`);
         return { bytes: printed.bytes, printed, writer };
       } catch (error) {
         prints++;
