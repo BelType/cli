@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.6 — 2026-11-04
+
+- **`beltype serve` keeps one print page.** A document with no script of its own is written into it with `document.open()`, so the realm, Caster's capability registry and the warmed code stay between prints; the previous Cicero client is let go with Cicero 0.1.6's `release()` first. A document that carries a `<script>`, an `<iframe>`, an `<object>`, an `<embed>`, a `javascript:` URL or an `on…=` attribute takes a fresh page, since the `Window` outlives `document.open()` and a script could watch the next client's document. A failed print discards the kept page. Measured on the Mac, medians of 20 warm prints of the paper: 570 ms to 271 ms. Every kept print is byte-identical to the same document printed alone (`test/serve.test.ts`).
+- **The log line says where each print's time went**: the road (kept or fresh), the page, the load, the cut, the print, the close, and Caster's stages.
+- **Cicero 0.1.6.** Caster 0.1.6 and common 0.1.2 are unchanged.
+
 ## 0.1.5 — 2026-11-03
 
 - **`beltype serve`**, `beltype print` behind an HTTP door in Gotenberg's shape: `POST /print` (`multipart/form-data`, `index.html` and the files beside it, flags as plain fields) answers the PDF, and `GET /health` the server's state. One Chromium stays warm, and forme, Caster's Rust writer, stays warm in a shared worker that every document's page hands its display list to. Under forme the sample paper prints in 533 ms against `beltype print`'s 753, its write in about 50 ms against 133. One print runs at a time; the browser restarts after a crash, after `--restart-after` prints, and after a print over `--timeout`. It binds `127.0.0.1` and fetches nothing from a network. The warm-up document ships one font, Source Sans 3 (SIL OFL), in `assets/warmup/`.
