@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.1.5 — 2026-11-03
 
+- **`beltype serve`**, `beltype print` behind an HTTP door in Gotenberg's shape: `POST /print` (`multipart/form-data`, `index.html` and the files beside it, flags as plain fields) answers the PDF, and `GET /health` the server's state. One Chromium stays warm, and forme, Caster's Rust writer, stays warm in a shared worker that every document's page hands its display list to. Under forme the sample paper prints in 533 ms against `beltype print`'s 753, its write in about 50 ms against 133. One print runs at a time; the browser restarts after a crash, after `--restart-after` prints, and after a print over `--timeout`. It binds `127.0.0.1` and fetches nothing from a network. The warm-up document ships one font, Source Sans 3 (SIL OFL), in `assets/warmup/`.
+- **Caster 0.1.6**, which carries forme behind `writer: 'forme'` and the shared worker the server keeps warm. Cicero 0.1.5 and common 0.1.2 are unchanged.
 - **The print's steps leave `print()`** for `src/run.ts` (`documentAssets`, `servedHtml`, `routeCompanions`, `routeDocument`, `printOnPage`), so a server can share them; `print()` behaves, says and traces as before. The document's own files are answered on the page, the companions' and the refusals on the context.
 - **`SOURCE_DATE_EPOCH`** sets the file's creation and modification dates, so the same document prints to the same bytes twice.
 
