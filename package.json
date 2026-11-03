@@ -30,11 +30,7 @@
       "@beltype/cicero",
       "@beltype/caster",
       "@beltype/common"
-    ],
-    "overrides": {
-      "@beltype/caster": "link:../caster",
-      "@beltype/common": "link:../common"
-    }
+    ]
   },
   "dependencies": {
     "@beltype/caster": "0.1.5",
