@@ -13,7 +13,7 @@
     "node": ">=22"
   },
   "bin": {
-    "beltype": "./dist/src/cli.js"
+    "beltype": "dist/src/cli.js"
   },
   "files": [
     "dist"
