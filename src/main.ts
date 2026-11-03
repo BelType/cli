@@ -2,7 +2,7 @@
  * The `beltype` command.
  *
  * @remarks
- * One verb so far: `beltype print <file.html> [-o <file.pdf>]`. The output defaults to the input's name with `.pdf`, beside it. A flag the parser does not know is refused, never ignored.
+ * Two verbs: `beltype print <file.html> [-o <file.pdf>]` and `beltype serve` (see `serve.ts`). The output defaults to the input's name with `.pdf`, beside it. A flag the parser does not know is refused, never ignored.
  *
  * Flags have one shape across BelType: `--flag <owner>.<name>=<value>`, repeatable, names a row of a package's table (`beltype print --help` lists them all). `--printer` and `--check` are the command line's own rows spelled plainly; `--trace <file>` takes a free string, so it is a plain option beside the table.
  *
@@ -10,14 +10,43 @@
  */
 
 import { parseArgs } from 'node:util';
-import { BelTypeError } from '@beltype/common/errors';
+import { BelTypeError, ValidationError } from '@beltype/common/errors';
 import { checkLines } from './check.ts';
 import { cliFlags, createdFromEnv, flagsHelp, parseFlagArgs } from './flags.ts';
 import { print } from './print.ts';
+import { serve } from './serve.ts';
 
-const USAGE = 'usage: beltype print <file.html> [-o <file.pdf>] [--printer caster|chromium] [--check] [--trace <file.json>] [--flag <owner>.<name>=<value>]...';
+const USAGE = 'usage: beltype serve [--host 127.0.0.1] [--port 3000] [--max-upload 50] [--timeout 60] [--restart-after 100]\n       beltype print <file.html> [-o <file.pdf>] [--printer caster|chromium] [--check] [--trace <file.json>] [--flag <owner>.<name>=<value>]...';
+
+async function serveVerb(argv: string[]): Promise<void> {
+  const { values } = parseArgs({ args: argv, options: {
+    host: { type: 'string', default: '127.0.0.1' },
+    port: { type: 'string', default: '3000' },
+    'max-upload': { type: 'string', default: '50' },
+    timeout: { type: 'string', default: '60' },
+    'restart-after': { type: 'string', default: '100' }
+  } });
+  const number = (name: string, raw: string, min: number) => {
+    if (!/^\d+$/.test(raw) || Number(raw) < min) throw new ValidationError(`beltype serve: --${name} is a whole number of at least ${min}; got "${raw}".`);
+    return Number(raw);
+  };
+  const server = await serve({
+    host: values.host!,
+    port: number('port', values.port!, 0),
+    maxUpload: number('max-upload', values['max-upload']!, 1) * 1024 * 1024,
+    timeout: number('timeout', values.timeout!, 1) * 1000,
+    restartAfter: number('restart-after', values['restart-after']!, 1)
+  });
+  const stop = () => { void server.close().then(() => process.exit(0)); };
+  process.on('SIGINT', stop);
+  process.on('SIGTERM', stop);
+}
 
 async function main(argv: string[]): Promise<number> {
+  if (argv[0] === 'serve') {
+    await serveVerb(argv.slice(1));
+    return -1;
+  }
   const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: {
     output: { type: 'string', short: 'o' },
     help: { type: 'boolean', short: 'h' },
@@ -47,7 +76,7 @@ async function main(argv: string[]): Promise<number> {
 }
 
 main(process.argv.slice(2)).then(
-  (code) => process.exit(code),
+  (code) => { if (code >= 0) process.exit(code); },
   (error) => {
     console.error(error instanceof BelTypeError ? error.message : error);
     process.exit(1);

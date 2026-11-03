@@ -16,7 +16,8 @@
     "beltype": "dist/src/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "assets"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

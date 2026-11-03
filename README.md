@@ -6,6 +6,7 @@ The BelType command line. It prints a finished HTML document to PDF: Cicero cuts
 beltype print paper/index.html            # writes paper/index.pdf
 beltype print paper/index.html -o paper.pdf
 beltype print paper/index.html --printer chromium --check --trace trace.json
+beltype serve                             # the same, behind HTTP: see below
 ```
 
 ## Flags
@@ -22,6 +23,21 @@ beltype print paper/index.html --flag caster.shaper=fontkit --flag cicero.compos
 - `SOURCE_DATE_EPOCH=<seconds>` (an environment variable, not a flag): the moment the file says it was made, whole seconds since 1970 as the reproducible-builds convention has it. Set, the file's `/CreationDate` and `/ModDate` are that instant and the same document printed twice gives the same bytes; unset, they are the wall clock.
 
 The document is plain HTML, CSS and the files beside it. The run answers every request from the document's folder, on a made-up `.invalid` address, and refuses anything else by name: a document that asks for a file it does not have, or for anything on a network, prints nothing. Fonts must be declared with `@font-face` and their files, because Caster embeds every face it draws.
+
+## beltype serve
+
+`beltype serve` is `beltype print` behind an HTTP door, in Gotenberg's shape: one Chromium kept warm, and forme kept warm in a shared worker that every document's page hands its display list to, so a print skips the browser's launch and forme's cold first write. A print is still `beltype print`'s: Cicero cuts and Caster prints in the document's own page, answered from the files it was posted with.
+
+```bash
+beltype serve --port 3000
+curl -F index.html=@index.html -F paper.css=@paper.css -F fonts/a.woff2=@fonts/a.woff2 -F caster.writer=forme http://127.0.0.1:3000/print -o out.pdf
+```
+
+- `POST /print`, `multipart/form-data`. `index.html` is required; every other file keeps its form field name as its path relative to the document (`fonts/a.woff2`), plain segments with `/` separators, never absolute and never `..`. A field that is not a file is a flag, `<owner>.<name>` = value (`caster.writer=forme`, `cicero.…`); `beltype.check` is refused. A field `created` (an ISO 8601 instant) fixes the file's dates, else `SOURCE_DATE_EPOCH`, else the clock. The answer is `200 application/pdf` with `X-Beltype-Pages`, `X-Beltype-Words` and `X-Beltype-Warnings` (the count); `422` with `beltype print`'s sentence where the document is refused (a file it asked for and was not given, among them); `400` for a bad request; `413` over the upload limit; `504` over the time limit; `500` otherwise, after which the browser is restarted.
+- `GET /health`: `{ "status": "up", "chromium": …, "prints": …, "queued": … }`, or `503` with `"status": "restarting"` while the browser starts again.
+- `--host 127.0.0.1`, `--port 3000`, `--max-upload 50` (MB), `--timeout 60` (seconds per print), `--restart-after 100` (prints before the browser is restarted).
+- One print runs at a time; the others wait their turn. After every start the server prints a built-in document twice under forme (the log shows both writes), so the first request is warm.
+- It binds `127.0.0.1` unless `--host` says otherwise, and fetches nothing from a network: a document that asks for anything it was not posted is refused by name, as in `beltype print`. The built-in warm-up document ships one font, Source Sans 3 (SIL OFL), in `assets/warmup/`.
 
 ## The sample
 
