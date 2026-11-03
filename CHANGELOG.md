@@ -1,7 +1,8 @@
 # Changelog
 
-## 0.1.4 — 2026-10-30
+## 0.1.4 — 2026-11-03
 
+- **Caster 0.1.5, Cicero 0.1.5 and common 0.1.2**, the first versions that carry the flags in one shape and the engine's own subpaths.
 - **Flags in one shape.** `--flag <owner>.<name>=<value>`, repeatable, sets a row of Caster's, Cicero's or the command line's own table, each declared with `@beltype/common/flags`. `--printer` and `--check` are the command line's rows spelled plainly. `beltype print --help` lists every table. Every default reproduces today's behaviour.
 - **`--printer chromium`.** Chromium's own print (`page.pdf()`) prints the pages Cicero presented, one sheet to a page; it refuses when the pages are not all one size. Caster stays the default. This reverses the earlier "one road" rule, at Egildo's request of 2026-10-30.
 - **`--trace <file.json>`.** Where a run's time went: node's clock around each step, Cicero's `performance.measure` entries, Caster's report timings, the versions and the resolved flags. Written even when the run refuses.

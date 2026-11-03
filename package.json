@@ -32,9 +32,9 @@
     ]
   },
   "dependencies": {
-    "@beltype/caster": "0.1.3",
-    "@beltype/cicero": "0.1.4",
-    "@beltype/common": "0.1.1",
+    "@beltype/caster": "0.1.5",
+    "@beltype/cicero": "0.1.5",
+    "@beltype/common": "0.1.2",
     "mupdf": "1.28.1",
     "playwright-core": "1.63.0"
   },
