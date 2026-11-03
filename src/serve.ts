@@ -32,11 +32,11 @@ window.sw = new SharedWorker(c.formeSharedWorkerUrl(), { type: 'module', name: '
 </script></body></html>`;
 
 // Run from src/ or from dist/src/: the package root is the first folder up that holds `assets`.
-const WARMUP_FONT = [1, 2].map((up) => fileURLToPath(new URL(`${'../'.repeat(up)}assets/warmup/SourceSans3-Variable.woff2`, import.meta.url))).find((f) => fs.existsSync(f))!;
+export const WARMUP_FONT = [1, 2].map((up) => fileURLToPath(new URL(`${'../'.repeat(up)}assets/warmup/SourceSans3-Variable.woff2`, import.meta.url))).find((f) => fs.existsSync(f))!;
 const WORDS = 'the quick brown fox jumps over a lazy dog while leaf litter decomposes along an altitudinal gradient and soil carbon settles slowly beneath the canopy of old beech and spruce'.split(' ');
 const paragraph = (n: number) => Array.from({ length: 90 }, (_, i) => WORDS[(i * 7 + n * 3) % WORDS.length]).join(' ') + '.';
 /** Plain paragraphs and one heading, in the one face the CLI ships for it (`assets/warmup/`, SIL OFL): neither Cicero nor Caster supplies a default face, and Caster refuses a document with none. */
-const WARMUP = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Warm-up</title><style>@font-face { font-family: Warm; src: url(warm.woff2) format("woff2"); font-weight: 200 900 } @page { size: A4; margin: 20mm } body { font: 11pt/1.4 Warm }</style></head><body><h1>Warm-up</h1>${Array.from({ length: 16 }, (_, n) => `<p>${paragraph(n)}</p>`).join('')}</body></html>`;
+export const WARMUP = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Warm-up</title><style>@font-face { font-family: Warm; src: url(warm.woff2) format("woff2"); font-weight: 200 900 } @page { size: A4; margin: 20mm } body { font: 11pt/1.4 Warm }</style></head><body><h1>Warm-up</h1>${Array.from({ length: 16 }, (_, n) => `<p>${paragraph(n)}</p>`).join('')}</body></html>`;
 
 /** One print's road and the milliseconds of each step, by name. */
 type Trace = { road: 'kept' | 'fresh'; ms: Record<string, number> };

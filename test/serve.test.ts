@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { specimen } from '@beltype/specimens';
 import { print } from '../src/print.ts';
-import { serve, keptRoad } from '../src/serve.ts';
+import { serve, keptRoad, WARMUP, WARMUP_FONT } from '../src/serve.ts';
 
 const SAMPLE = specimen('paper').entry;
 const FOLDER = path.dirname(SAMPLE);
@@ -212,6 +212,36 @@ test('the kept page gives back, for every document of a sequence, the file a pag
     }
     const roads = lines.filter((l) => / road /.test(l)).map((l) => /road (\w+)/.exec(l)![1]);
     assert.ok(roads.length >= sequence.length && roads.every((r) => r === 'kept'), `roads: ${roads}`);
+  } finally {
+    if (previous === undefined) delete process.env['SOURCE_DATE_EPOCH']; else process.env['SOURCE_DATE_EPOCH'] = previous;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the kept page survives switching families: warm-up, paper, warm-up, paper, a scripted paper, paper, each equal to its fresh print', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'beltype-serve-test-'));
+  const previous = process.env['SOURCE_DATE_EPOCH'];
+  process.env['SOURCE_DATE_EPOCH'] = String(Math.floor(Date.parse(CREATED) / 1000));
+  try {
+    const { s, lines } = await own({});
+    const warm = path.join(dir, 'warm');
+    fs.mkdirSync(warm);
+    fs.writeFileSync(path.join(warm, 'index.html'), WARMUP);
+    fs.copyFileSync(WARMUP_FONT, path.join(warm, 'warm.woff2'));
+    const scripted = path.join(dir, 'scripted');
+    fs.cpSync(FOLDER, scripted, { recursive: true });
+    fs.writeFileSync(path.join(scripted, 'index.html'), fs.readFileSync(SAMPLE, 'utf8').replace('</body>', '<script>document.title = "scripted";</script></body>'));
+    const steps = [warm, FOLDER, warm, FOLDER, scripted, FOLDER];
+    for (const [i, folder] of steps.entries()) {
+      const res = await fetch(`${s.url}/print`, { method: 'POST', body: paperForm({ created: CREATED }, undefined, folder) });
+      assert.equal(res.status, 200, await res.clone().text());
+      const served = Buffer.from(await res.arrayBuffer());
+      const output = path.join(dir, `fresh-${i}.pdf`);
+      await print(path.join(folder, 'index.html'), output, { given: {}, created: CREATED });
+      assert.ok(served.equals(fs.readFileSync(output)), `step ${i + 1} (${path.basename(folder)}): ${served.length} bytes served, ${fs.statSync(output).size} on a page of its own`);
+    }
+    const roads = lines.filter((l) => / road /.test(l)).map((l) => /road (\w+)/.exec(l)![1]);
+    assert.deepEqual(roads.slice(-6), ['kept', 'kept', 'kept', 'kept', 'fresh', 'kept']);
   } finally {
     if (previous === undefined) delete process.env['SOURCE_DATE_EPOCH']; else process.env['SOURCE_DATE_EPOCH'] = previous;
     fs.rmSync(dir, { recursive: true, force: true });
