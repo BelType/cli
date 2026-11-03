@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { specimen } from '@beltype/specimens';
 import { print } from '../src/print.ts';
-import { serve } from '../src/serve.ts';
+import { serve, keptRoad } from '../src/serve.ts';
 
 const SAMPLE = specimen('paper').entry;
 const FOLDER = path.dirname(SAMPLE);
@@ -17,9 +17,9 @@ function files(dir: string, base = ''): string[] {
   return fs.readdirSync(path.join(dir, base), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(dir, `${base}${e.name}/`) : [`${base}${e.name}`]));
 }
 
-function paperForm(fields: Record<string, string>, omit?: string): FormData {
+function paperForm(fields: Record<string, string>, omit?: string, folder = FOLDER): FormData {
   const form = new FormData();
-  for (const name of files(FOLDER)) if (name !== omit) form.append(name, new Blob([fs.readFileSync(path.join(FOLDER, name))]), path.basename(name));
+  for (const name of files(folder)) if (name !== omit) form.append(name, new Blob([fs.readFileSync(path.join(folder, name))]), path.basename(name));
   for (const [k, v] of Object.entries(fields)) form.append(k, v);
   return form;
 }
@@ -153,4 +153,101 @@ test('the warm-up works: the first forme write is under 1.5 times the median of 
   const median = (rest[1]! + rest[2]!) / 2;
   console.log(`forme write ms, five prints: ${emit.join(', ')}; median of the last four ${median}`);
   assert.ok(emit[0]! < 1.5 * median, `first ${emit[0]} against median ${median}`);
+});
+
+// The kept page (plans/serve-keeps-more-warm): a script-free document re-seats one page, and must give back what a page of its own gives.
+// These few lines are testbench's variant generator (src/variants.ts), copied: the same shuffles of the paper's paragraphs.
+const BLOCKS = /<(p|li|td|figcaption)\b[^>]*>[\s\S]*?<\/\1>/g;
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function variant(html: string, k: number): string {
+  const rand = mulberry32(k);
+  return html.replace(BLOCKS, (block) => {
+    const parts = block.split(/(<[^>]*>)/);
+    const words = parts.filter((_, i) => i % 2 === 0).flatMap((s) => s.match(/\S+/g) ?? []);
+    for (let i = words.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [words[i], words[j]] = [words[j]!, words[i]!];
+    }
+    let n = 0;
+    return parts.map((s, i) => (i % 2 === 0 ? s.replace(/\S+/g, () => words[n++]!) : s)).join('');
+  });
+}
+function variantFolder(k: number | null, dir: string): string {
+  const folder = path.join(dir, `paper-${k ?? 0}`);
+  fs.cpSync(FOLDER, folder, { recursive: true });
+  const entry = path.join(folder, path.basename(SAMPLE));
+  if (k !== null) fs.writeFileSync(entry, variant(fs.readFileSync(entry, 'utf8'), k));
+  return folder;
+}
+
+test('keptRoad: a document with a script of its own, or any way to run one, is refused the kept page', () => {
+  assert.equal(keptRoad('<html><body><p>hello</p><style>p { color: red }</style></body></html>'), true);
+  for (const bad of ['<SCRIPT>1</SCRIPT>', '<iframe src=x>', '<object data=x>', '<embed src=x>', '<frameset>', '<portal src=x>', '<a href="javascript:1">x</a>', '<img src=x onerror = "1">', '<body\nonload=1>']) assert.equal(keptRoad(bad), false, bad);
+});
+
+test('the kept page gives back, for every document of a sequence, the file a page of its own gives', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'beltype-serve-test-'));
+  const previous = process.env['SOURCE_DATE_EPOCH'];
+  process.env['SOURCE_DATE_EPOCH'] = String(Math.floor(Date.parse(CREATED) / 1000));
+  try {
+    const { s, lines } = await own({});
+    // The paper, then (after the server's own warm-up, which ran first on the same page) five shuffles of it, then the paper again.
+    const sequence = [null, 1, 2, 3, 4, 5, null];
+    for (const k of sequence) {
+      const folder = variantFolder(k, dir);
+      const res = await fetch(`${s.url}/print`, { method: 'POST', body: paperForm({ created: CREATED }, undefined, folder) });
+      assert.equal(res.status, 200, await res.clone().text());
+      const kept = Buffer.from(await res.arrayBuffer());
+      const output = path.join(dir, `fresh-${k ?? 0}.pdf`);
+      await print(path.join(folder, path.basename(SAMPLE)), output, { given: {}, created: CREATED });
+      assert.ok(kept.equals(fs.readFileSync(output)), `paper variant ${k ?? 'itself'}: ${kept.length} bytes on the kept page, ${fs.statSync(output).size} on a page of its own`);
+    }
+    const roads = lines.filter((l) => / road /.test(l)).map((l) => /road (\w+)/.exec(l)![1]);
+    assert.ok(roads.length >= sequence.length && roads.every((r) => r === 'kept'), `roads: ${roads}`);
+  } finally {
+    if (previous === undefined) delete process.env['SOURCE_DATE_EPOCH']; else process.env['SOURCE_DATE_EPOCH'] = previous;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a document with a script of its own takes a page of its own, the log says so, and the next script-free print is the kept one', async () => {
+  const { s, lines } = await own({});
+  const withScript = paperForm({ created: CREATED }, 'index.html');
+  withScript.append('index.html', new Blob([fs.readFileSync(SAMPLE, 'utf8').replace('</body>', '<script>document.title = "scripted";</script></body>')]), 'index.html');
+  assert.equal((await fetch(`${s.url}/print`, { method: 'POST', body: withScript })).status, 200);
+  assert.equal((await post(s.url)).status, 200);
+  const roads = lines.filter((l) => / road /.test(l)).map((l) => /road (\w+)/.exec(l)![1]);
+  assert.deepEqual(roads.slice(-2), ['fresh', 'kept']);
+});
+
+test('a refusal on the kept page (the paper-12 shuffle) is the fresh page\'s, and the next print is still its fresh print\'s bytes', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'beltype-serve-test-'));
+  try {
+    const { s } = await own({});
+    const twelve = variantFolder(12, dir);
+    const res = await fetch(`${s.url}/print`, { method: 'POST', body: paperForm({ created: CREATED }, undefined, twelve) });
+    const status = res.status;
+    const text = await res.text();
+    const output = path.join(dir, 'twelve.pdf');
+    let freshRefusal: string | null = null;
+    try { await print(path.join(twelve, path.basename(SAMPLE)), output, { given: {}, created: CREATED }); } catch (error) { freshRefusal = (error as Error).message; }
+    console.log('paper-12:', status, freshRefusal === null ? 'prints on a page of its own' : freshRefusal.slice(0, 200));
+    if (freshRefusal === null) assert.equal(status, 200, `a page of its own prints it; the kept page said ${status}: ${text}`);
+    else { assert.equal(status, 422); assert.equal(text.trim(), freshRefusal.trim()); }
+    const next = await post(s.url);
+    assert.equal(next.status, 200);
+    const again = path.join(dir, 'again.pdf');
+    await print(SAMPLE, again, { given: {}, created: CREATED });
+    assert.ok(Buffer.from(await next.arrayBuffer()).equals(fs.readFileSync(again)));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -4,6 +4,8 @@
  * @remarks
  * **One browser, one context, one holder page.** The context carries the companions' routes; the holder page opens the shared writer worker (Caster's `formeSharedWorkerUrl()`) and keeps it for as long as the page lives, so forme's WebAssembly stays warm across prints. A print is a new page in that context, routed to its own folder alone ({@link routeDocument}), run through {@link printOnPage} with `sharedWriter`, and closed.
  *
+ * **One kept print page, for a document with no script of its own.** A print re-seats the kept page as Caster's kept frame does (`document.open()` keeps the `Window`, so the realm, Caster's registry and the companions' modules stay warm; *the printer runs in the realm it prints*, Caster's DESIGN.md S20, S87, S89): its routes are swapped for the print's folder, the served document is written in, and each module script the document names gets a query of its own. That page is shared only by a document whose text holds none of `<script`, `<iframe`, `<object`, `<embed`, `<frame`, `<portal`, `javascript:` or an `on…=` attribute ({@link keptRoad}); any other gets a new page, and the log line names the road. A print that fails or times out closes the kept page, and the next opens a new one.
+ *
  * **One at a time, and kept alive.** A promise chain runs the prints in turn. The browser is closed and started again (routes, holder page, warm-up) after `restartAfter` prints and after a print that failed with a 500, and a disconnected browser is started again before the next print. The warm-up prints a built-in document twice under forme, so the first request is warm too.
  *
  * @packageDocumentation
@@ -14,7 +16,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium, type Browser, type BrowserContext } from 'playwright-core';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 import { ciceroFlags } from '@beltype/cicero/flags';
 import { BuildError, ValidationError, FlagError } from '@beltype/common/errors';
 import { cliFlags, createdFromEnv, parseFlagArgs, type Given } from './flags.ts';
@@ -36,15 +38,20 @@ const paragraph = (n: number) => Array.from({ length: 90 }, (_, i) => WORDS[(i *
 /** Plain paragraphs and one heading, in the one face the CLI ships for it (`assets/warmup/`, SIL OFL): neither Cicero nor Caster supplies a default face, and Caster refuses a document with none. */
 const WARMUP = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Warm-up</title><style>@font-face { font-family: Warm; src: url(warm.woff2) format("woff2"); font-weight: 200 900 } @page { size: A4; margin: 20mm } body { font: 11pt/1.4 Warm }</style></head><body><h1>Warm-up</h1>${Array.from({ length: 16 }, (_, n) => `<p>${paragraph(n)}</p>`).join('')}</body></html>`;
 
-/** Milliseconds per step of one print, by name. */
-type Steps = Record<string, number>;
+/** One print's road and the milliseconds of each step, by name. */
+type Trace = { road: 'kept' | 'fresh'; ms: Record<string, number> };
 
-const lapper = (steps: Steps) => {
+const DOC_PATH = '/index.html';
+
+const lapper = (steps: Record<string, number>) => {
   const began: Record<string, number> = {};
   return { start: (name: string) => { began[name] = performance.now(); }, end: (name: string) => { steps[name] = performance.now() - (began[name] ?? performance.now()); } };
 };
 
-const stepsLine = (steps: Steps, printed: Printed) => `${['page', 'load', 'cut', 'print', 'close'].map((n) => `${n} ${Math.round(steps[n] ?? 0)}`).join(', ')}; caster ${Object.entries(printed.caster?.ms ?? {}).map(([k, v]) => `${k} ${Math.round(Number(v))}`).join(', ')}`;
+const stepsLine = ({ road, ms: steps }: Trace, printed: Printed) => `road ${road}; ${['page', 'load', 'cut', 'print', 'close'].map((n) => `${n} ${Math.round(steps[n] ?? 0)}`).join(', ')}; caster ${Object.entries(printed.caster?.ms ?? {}).map(([k, v]) => `${k} ${Math.round(Number(v))}`).join(', ')}`;
+
+/** Whether a document may share the kept page: only one with no script of its own (the `Window` outlives `document.open()`, and so does a timer, a listener or a global a script left on it). The test is conservative; a false alarm costs only speed. */
+export const keptRoad = (html: string) => !/<script|<iframe|<object|<embed|<frame|<portal|javascript:|\son[a-z]+\s*=/i.test(html);
 
 class HttpError extends Error {
   status: number;
@@ -55,6 +62,8 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
   const log = options.log ?? ((line: string) => console.log(line));
   const assets: Assets = documentAssets();
   const missing = new Set<string>();
+  let kept: Page | null = null;
+  let reseats = 0;
   let browser: Browser | null = null;
   let context: BrowserContext | null = null;
   let version = 'unknown';
@@ -67,12 +76,27 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
 
   const stopBrowser = async () => {
     const old = browser;
-    browser = context = null;
+    browser = context = kept = null;
     await old?.close().catch(() => {});
   };
 
-  /** Run `html` and `files` through the print's road on a new page; the folder and the page are gone after. */
-  const render = async (files: Map<string, Uint8Array>, given: Given, created: string | undefined, steps: Steps = {}): Promise<Printed> => {
+  /** The kept page, opened on a blank document at the document's own path so that relative references resolve as a print's would. */
+  const openKept = async () => {
+    const page = await context!.newPage();
+    page.on('pageerror', (error) => console.warn(`page error: ${error.message}`));
+    await routeDocument(page, missing, { root: path.join(os.tmpdir(), 'beltype-serve-none'), docPath: DOC_PATH, served: servedHtml('<!doctype html><html><head></head><body></body></html>') });
+    await page.goto(ORIGIN + DOC_PATH, { waitUntil: 'load' });
+    return kept = page;
+  };
+
+  /** Closes `page`, and forgets it if it is the kept one: a page a failed or timed-out print used is never reused. */
+  const closePage = async (page: Page) => {
+    if (kept === page) kept = null;
+    await page.close().catch(() => {});
+  };
+
+  /** Run `html` and `files` through the print's road: re-seated on the kept page where the document carries no script of its own, else on a new page. The folder is gone after. */
+  const render = async (files: Map<string, Uint8Array>, given: Given, created: string | undefined, trace: Trace = { road: 'fresh', ms: {} }): Promise<Printed> => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'beltype-serve-'));
     try {
       for (const [name, bytes] of files) {
@@ -81,23 +105,27 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
         fs.writeFileSync(file, bytes);
       }
       const flags = { caster: given.caster, cicero: ciceroFlags.resolve(given.cicero as never), beltype: cliFlags.resolve(given.beltype as never) };
-      const docPath = '/index.html';
-      const served = servedHtml(Buffer.from(files.get('index.html')!).toString('utf8'));
+      const author = Buffer.from(files.get('index.html')!).toString('utf8');
+      const served = servedHtml(author);
+      const keep = keptRoad(author);
+      trace.road = keep ? 'kept' : 'fresh';
       missing.clear();
-      const lapped = lapper(steps);
+      const lapped = lapper(trace.ms);
       lapped.start('page');
-      const page = await context!.newPage();
+      const page = keep ? (kept ?? await openKept()) : await context!.newPage();
       try {
-        await routeDocument(page, missing, { root, docPath, served });
+        if (keep) await page.unrouteAll({ behavior: 'wait' });
+        await routeDocument(page, missing, { root, docPath: DOC_PATH, served });
         lapped.end('page');
-        const printed = await printOnPage(page, missing, flags, { docPath, sharedWriter: true, progress: { step: lapped.start, lap: lapped.end }, ...(created !== undefined ? { created } : {}) });
+        const reseat = keep ? served.replace(/(<script type="module" src="[^"?]+)"/g, `$1?kept=${++reseats}"`) : undefined;
+        const printed = await printOnPage(page, missing, flags, { docPath: DOC_PATH, sharedWriter: true, progress: { step: lapped.start, lap: lapped.end }, ...(reseat !== undefined ? { reseat } : {}), ...(created !== undefined ? { created } : {}) });
         lapped.end('print');
         if (missing.size) throw refusal(missing, null);
+        if (!keep) { lapped.start('close'); await closePage(page); lapped.end('close'); }
         return printed;
-      } finally {
-        lapped.start('close');
-        await page.close().catch(() => {});
-        lapped.end('close');
+      } catch (error) {
+        await closePage(page);
+        throw error;
       }
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
@@ -117,6 +145,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
     const holder = await context.newPage();
     await holder.goto(ORIGIN + HOLDER_PATH, { waitUntil: 'load' });
     await holder.waitForFunction(() => (window as unknown as { sw?: unknown }).sw !== undefined);
+    await openKept();
     const given = await parseFlagArgs(['caster.writer=forme']);
     for (const n of [1, 2]) {
       const printed = await render(new Map([['index.html', Buffer.from(WARMUP)], ['warm.woff2', fs.readFileSync(WARMUP_FONT)]]), given, undefined);
@@ -177,8 +206,8 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       const id = prints + 1;
       log(`beltype serve: print ${id} started`);
       const t0 = performance.now();
-      const steps: Steps = {};
-      const run = render(files, given, created, steps);
+      const trace: Trace = { road: 'fresh', ms: {} };
+      const run = render(files, given, created, trace);
       let timer: NodeJS.Timeout | undefined;
       const limit = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new HttpError(504, `beltype serve: the print took over ${options.timeout / 1000} s.`)), options.timeout); });
       try {
@@ -186,12 +215,13 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
         prints++;
         sinceStart++;
         log(`beltype serve: print ${id}: 200, ${printed.pages} pages, ${writer}, ${Math.round(performance.now() - t0)} ms (write ${printed.caster?.ms['emit'] ?? '?'} ms)`);
-        log(`beltype serve: print ${id}: ${stepsLine(steps, printed)}`);
+        log(`beltype serve: print ${id}: ${stepsLine(trace, printed)}`);
         return { bytes: printed.bytes, printed, writer };
       } catch (error) {
         prints++;
         sinceStart++;
         run.catch(() => {});
+        if (error instanceof HttpError && kept) await closePage(kept);
         if (!(error instanceof BuildError) && !(error instanceof HttpError)) needsRestart = true;
         throw error;
       } finally {
