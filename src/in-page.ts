@@ -84,26 +84,14 @@ export function chromiumSheetInPage(sheet: { page: string; shadow: string }): vo
  * Seat `html` as the page's document without a navigation: `document.open()` keeps the `Window`, so the realm Caster measures from, its modules and its capability registry stay (Caster's DESIGN.md S87, S89). The `adoptedStyleSheets` the last document left on the Document are emptied; `load` is awaited as a navigation's would be.
  *
  * @remarks
- * The module scripts are held back until the document's faces have loaded. The previous Cicero client's rim still listens on the one `FontFaceSet` the Document keeps, and hears a face of a new family arrive as a late fact, which makes it start a whole run of its own through `window.__beltypeCicero` beside the host's, so the host's run is let go after one page (measured: the paper after a document of another family cut 1 page, not 4). Its door is stopped for the length of the wait and the faces arrive before the new client wires its rim, so it hears nothing.
+ * The previous Cicero client is released first (`release()`, Cicero 0.1.6, SPEC XII.7): the `Window` and its one `FontFaceSet` outlive `document.open()`, and an unreleased client heard a face of the next document's family arrive as a late fact and ran beside the host's run, which was let go after one page (measured: the paper after a document of another family cut 1 page, not 4). A released client deletes its handle, so the next document's module scripts must load under a URL of their own, which `serve.ts` keys per re-seat.
  */
 export async function reseatInPage(html: string): Promise<void> {
-  const scripts: string[] = [];
-  const held = html.replace(/<script type="module" src="([^"]+)"><\/script>/g, (_, src: string) => { scripts.push(src); return ''; });
-  (window as any).__beltypeCicero = { run: async () => ({}), settled: async () => {} };
+  await (window as any).__beltypeCicero?.release?.();
   document.open();
   document.adoptedStyleSheets = [];
   const loaded = new Promise<void>((resolve) => window.addEventListener('load', () => resolve(), { once: true }));
-  document.write(held);
+  document.write(html);
   document.close();
   await loaded;
-  await document.fonts.ready;
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  await Promise.all(scripts.map((src) => new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.type = 'module';
-    script.src = src;
-    script.onload = resolve;
-    script.onerror = () => reject(new Error(`the module ${src} did not load`));
-    document.head.appendChild(script);
-  })));
 }
