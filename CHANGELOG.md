@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **The print's steps leave `print()`** for `src/run.ts` (`documentAssets`, `servedHtml`, `routeCompanions`, `routeDocument`, `printOnPage`), so a server can share them; `print()` behaves, says and traces as before. The document's own files are answered on the page, the companions' and the refusals on the context.
+- **`SOURCE_DATE_EPOCH`** sets the file's creation and modification dates, so the same document prints to the same bytes twice.
+
 ## 0.1.4 — 2026-11-03
 
 - **Caster 0.1.5, Cicero 0.1.5 and common 0.1.2**, the first versions that carry the flags in one shape and the engine's own subpaths.

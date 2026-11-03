@@ -12,7 +12,7 @@
 import { parseArgs } from 'node:util';
 import { BelTypeError } from '@beltype/common/errors';
 import { checkLines } from './check.ts';
-import { cliFlags, flagsHelp, parseFlagArgs } from './flags.ts';
+import { cliFlags, createdFromEnv, flagsHelp, parseFlagArgs } from './flags.ts';
 import { print } from './print.ts';
 
 const USAGE = 'usage: beltype print <file.html> [-o <file.pdf>] [--printer caster|chromium] [--check] [--trace <file.json>] [--flag <owner>.<name>=<value>]...';
@@ -39,7 +39,8 @@ async function main(argv: string[]): Promise<number> {
   if (values.printer !== undefined) given.beltype['printer'] = cliFlags.parse('printer', values.printer);
   if (values.check) given.beltype['check'] = true;
   const output = values.output ?? input.replace(/\.html?$/i, '') + '.pdf';
-  const result = await print(input, output, { given, ...(values.trace !== undefined ? { trace: values.trace } : {}) });
+  const created = createdFromEnv();
+  const result = await print(input, output, { given, ...(values.trace !== undefined ? { trace: values.trace } : {}), ...(created ? { created } : {}) });
   console.log(`${result.output}: ${result.pages} pages, ${result.words} words, ${(result.ms / 1000).toFixed(1)} s`);
   if (result.check) for (const line of checkLines(result.check)) console.log(line);
   return 0;

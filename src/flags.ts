@@ -60,3 +60,11 @@ export async function flagsHelp(): Promise<string> {
   const valuesWidth = Math.max(...rows.map((r) => r[1].length));
   return `${rows.map(([flag, values, def]) => `  ${flag.padEnd(width)}  ${values.padEnd(valuesWidth)}  default ${def}`).join('\n')}`;
 }
+
+/** The instant `SOURCE_DATE_EPOCH` names (whole seconds since 1970, the reproducible-builds convention), as an ISO 8601 string; undefined where the variable is not set. @throws {ValidationError} where it is not whole seconds. */
+export function createdFromEnv(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const epoch = env['SOURCE_DATE_EPOCH'];
+  if (epoch === undefined || epoch === '') return undefined;
+  if (!/^\d{1,15}$/.test(epoch)) throw new ValidationError(`beltype: SOURCE_DATE_EPOCH is whole seconds since 1970; got "${epoch}".`);
+  return new Date(Number(epoch) * 1000).toISOString();
+}
