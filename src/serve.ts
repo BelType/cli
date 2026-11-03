@@ -4,7 +4,7 @@
  * @remarks
  * **One browser, one context, one holder page.** The context carries the companions' routes; the holder page opens the shared writer worker (Caster's `formeSharedWorkerUrl()`) and keeps it for as long as the page lives, so forme's WebAssembly stays warm across prints. A print is a new page in that context, routed to its own folder alone ({@link routeDocument}), run through {@link printOnPage} with `sharedWriter`, and closed.
  *
- * **One kept print page, for a document with no script of its own.** A print re-seats the kept page as Caster's kept frame does (`document.open()` keeps the `Window`, so the realm, Caster's registry and the companions' modules stay warm; *the printer runs in the realm it prints*, Caster's DESIGN.md S20, S87, S89): its routes are swapped for the print's folder, the served document is written in, and each module script the document names gets a query of its own. That page is shared only by a document whose text holds none of `<script`, `<iframe`, `<object`, `<embed`, `<frame`, `<portal`, `javascript:` or an `on…=` attribute ({@link keptRoad}); any other gets a new page, and the log line names the road. A print that fails or times out closes the kept page, and the next opens a new one.
+ * **One kept print page, for a document with no script of its own.** A print re-seats the kept page as Caster's kept frame does (`document.open()` keeps the `Window`, so the realm, Caster's registry and the companions' modules stay warm; *the printer runs in the realm it prints*, Caster's DESIGN.md S20, S87, S89): its routes are swapped for the print's folder, the served document is written in, and each module script the document names gets a query of its own. That page is shared only by a document whose text, its JSON-LD data blocks aside, holds none of `<script`, `<iframe`, `<object`, `<embed`, `<frame`, `<portal`, `javascript:` or an `on…=` attribute ({@link keptRoad}); any other gets a new page, and the log line names the road. A print that fails or times out closes the kept page, and the next opens a new one.
  *
  * **One at a time, and kept alive.** A promise chain runs the prints in turn. The browser is closed and started again (routes, holder page, warm-up) after `restartAfter` prints and after a print that failed with a 500, and a disconnected browser is started again before the next print. The warm-up prints a built-in document twice under forme, so the first request is warm too.
  *
@@ -50,8 +50,11 @@ const lapper = (steps: Record<string, number>) => {
 
 const stepsLine = ({ road, ms: steps }: Trace, printed: Printed) => `road ${road}; ${['page', 'load', 'cut', 'print', 'close'].map((n) => `${n} ${Math.round(steps[n] ?? 0)}`).join(', ')}; caster ${Object.entries(printed.caster?.ms ?? {}).map(([k, v]) => `${k} ${Math.round(Number(v))}`).join(', ')}`;
 
-/** Whether a document may share the kept page: only one with no script of its own (the `Window` outlives `document.open()`, and so does a timer, a listener or a global a script left on it). The test is conservative; a false alarm costs only speed. */
-export const keptRoad = (html: string) => !/<script|<iframe|<object|<embed|<frame|<portal|javascript:|\son[a-z]+\s*=/i.test(html);
+/** A JSON-LD data block, which the browser never runs: an opening tag with that one attribute, to the first `</script` (the tokenizer ends the element there or later, never sooner, so what is cut is always inside the block). */
+const DATA_BLOCK = /<script\s+type\s*=\s*(["']?)application\/ld\+json\1\s*>[\s\S]*?<\/script/gi;
+
+/** Whether a document may share the kept page: only one with no script of its own (the `Window` outlives `document.open()`, and so does a timer, a listener or a global a script left on it). A JSON-LD data block is data, not script, and does not count. The test is conservative; a false alarm costs only speed. */
+export const keptRoad = (html: string) => !/<script|<iframe|<object|<embed|<frame|<portal|javascript:|\son[a-z]+\s*=/i.test(html.replace(DATA_BLOCK, ''));
 
 class HttpError extends Error {
   status: number;

@@ -42,6 +42,8 @@
   "devDependencies": {
     "@beltype/specimens": "0.1.0",
     "@types/node": "^22.20.5",
+    "linkedom": "0.18.14",
+    "prosemirror-stores": "link:/Volumes/dev/Codeberg/prosemirror-stores",
     "typescript": "7.0.2"
   },
   "bugs": {

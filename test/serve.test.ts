@@ -191,6 +191,10 @@ function variantFolder(k: number | null, dir: string): string {
 test('keptRoad: a document with a script of its own, or any way to run one, is refused the kept page', () => {
   assert.equal(keptRoad('<html><body><p>hello</p><style>p { color: red }</style></body></html>'), true);
   for (const bad of ['<SCRIPT>1</SCRIPT>', '<iframe src=x>', '<object data=x>', '<embed src=x>', '<frameset>', '<portal src=x>', '<a href="javascript:1">x</a>', '<img src=x onerror = "1">', '<body\nonload=1>']) assert.equal(keptRoad(bad), false, bad);
+  // A JSON-LD data block never runs, so it does not count; only the opening tag with that one attribute, and only up to the first </script, is let through.
+  assert.equal(keptRoad('<script type="application/ld+json">{"@graph":[]}</script><p>x</p>'), true);
+  assert.equal(keptRoad("<SCRIPT TYPE='application/LD+JSON'>{}</script >"), true);
+  for (const bad of ['<script type="application/ld+json" onload="1">{}</script>', '<script type="application/ld+json">{}</script x><script>1</script>', '<script type="application/ld+json">{}</script><script>1</script>', '<script type="module">1</script>', '<script type="application/ld+json" src="x.js"></script>']) assert.equal(keptRoad(bad), false, bad);
 });
 
 test('the kept page gives back, for every document of a sequence, the file a page of its own gives', async () => {

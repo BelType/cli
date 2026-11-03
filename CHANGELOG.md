@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **A JSON-LD data block no longer costs the kept page.** `<script type="application/ld+json">`, with that one attribute, is data the browser never runs, so `beltype serve` leaves it out of the script test, up to its first `</script`.
+- **A mail-merge test** (`test/mail-merge.test.ts`): one bill template, twenty customers. prosemirror-stores opens each customer's values and meter readings as the template's graph, its binds compute the days and the consumption, `writeMicrodata` fills the fields, and every bill prints through `beltype serve` on the kept page, each with its own customer and totals and nothing of the bill before it. On the Mac, twenty bills merged and printed in about 1.9 s.
+
 ## 0.1.7 — 2026-11-04
 
 - **Caster 0.1.7**: an image that prints far above its target is reduced before the list (`downsampleImages`, on by default: 300 ppi for anything above 450, Caster's own Catmull-Rom), with `imageResolution`, `downsampleThreshold` and `downsampleType` beside it as `--flag caster.<name>=<value>`; and a `<canvas>` figure prints. Cicero 0.1.6 and common 0.1.2 are unchanged. No code change in the command.

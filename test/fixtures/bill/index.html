@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Bolletta</title>
+<link rel="stylesheet" href="bill.css">
+<script type="application/ld+json">
+{
+  "@context": ["https://schema.org/", { "beltype": "urn:beltype:", "csvw": "http://www.w3.org/ns/csvw#", "Bind": "beltype:Bind", "ref": { "@id": "beltype:ref", "@type": "@id" }, "property": "beltype:property", "calculate": "beltype:calculate", "readonly": "beltype:readonly" }],
+  "@graph": [
+    { "@id": "#doc", "@type": "CreativeWork", "cliente": "", "indirizzo": "", "fattura": "", "periodo": "", "importo": "", "scadenza": "", "letture": { "@type": "csvw:Table", "csvw:url": "letture.csv" }, "giorni": 0, "consumo": "" },
+    { "@type": "Bind", "ref": "#doc", "property": "giorni", "calculate": "count(?letture?*)" },
+    { "@type": "Bind", "ref": "#doc", "property": "consumo", "calculate": "translate(string(round(sum(?letture?*?totale), 1)), '.', ',')" }
+  ]
+}
+</script>
+</head>
+<body itemscope itemid="#doc" itemtype="https://schema.org/CreativeWork">
+<header>
+  <p class="sender">Servizio Elettrico Esempio</p>
+  <p class="address"><span itemprop="cliente">Nome Cognome</span><br><span itemprop="indirizzo">Indirizzo</span></p>
+</header>
+<h1>Bolletta n. <span itemprop="fattura">0000</span></h1>
+<p>Gentile <span itemprop="cliente">Nome Cognome</span>, questa bolletta riguarda il periodo <span itemprop="periodo">periodo</span>.</p>
+<table>
+  <tr><th>Giorni di lettura</th><td><span itemprop="giorni">0</span></td></tr>
+  <tr><th>Consumo nel periodo</th><td><span itemprop="consumo">0</span> kWh</td></tr>
+  <tr><th>Importo da pagare</th><td><span itemprop="importo">0</span> EUR</td></tr>
+  <tr><th>Scadenza</th><td><span itemprop="scadenza">gg/mm/aaaa</span></td></tr>
+</table>
+<p>Il consumo e i giorni sono calcolati dalle letture del contatore. Per ogni domanda sulla bolletta il servizio clienti risponde dal lunedì al venerdì.</p>
+<p class="closing">Cordiali saluti,<br>Servizio Elettrico Esempio</p>
+</body>
+</html>
