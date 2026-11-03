@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.7 — 2026-11-04
+
+- **Caster 0.1.7**: an image that prints far above its target is reduced before the list (`downsampleImages`, on by default: 300 ppi for anything above 450, Caster's own Catmull-Rom), with `imageResolution`, `downsampleThreshold` and `downsampleType` beside it as `--flag caster.<name>=<value>`; and a `<canvas>` figure prints. Cicero 0.1.6 and common 0.1.2 are unchanged. No code change in the command.
+
 ## 0.1.6 — 2026-11-04
 
 - **`beltype serve` keeps one print page.** A document with no script of its own is written into it with `document.open()`, so the realm, Caster's capability registry and the warmed code stay between prints; the previous Cicero client is let go with Cicero 0.1.6's `release()` first. A document that carries a `<script>`, an `<iframe>`, an `<object>`, an `<embed>`, a `javascript:` URL or an `on…=` attribute takes a fresh page, since the `Window` outlives `document.open()` and a script could watch the next client's document. A failed print discards the kept page. Measured on the Mac, medians of 20 warm prints of the paper: 570 ms to 271 ms. Every kept print is byte-identical to the same document printed alone (`test/serve.test.ts`).
