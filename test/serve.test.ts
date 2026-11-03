@@ -26,6 +26,7 @@ function paperForm(fields: Record<string, string>, omit?: string): FormData {
 
 const log: string[] = [];
 let server: Awaited<ReturnType<typeof serve>>;
+let extras = { close: async () => {} };
 let small: Awaited<ReturnType<typeof serve>>;
 const options = { host: '127.0.0.1', port: 0, maxUpload: 50 * 1024 * 1024, timeout: 60_000, restartAfter: 100 };
 
@@ -36,6 +37,11 @@ before(async () => {
 after(async () => {
   await server.close();
   await small.close();
+  await extras.close();
+  // Brief 4, gate 5: nothing left behind. A timed-out print's folder goes when its page script ends, so give it a few seconds.
+  const left = () => fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('beltype-serve-'));
+  for (let i = 0; i < 100 && left().length; i++) await new Promise((r) => setTimeout(r, 100));
+  assert.deepEqual(left(), []);
 });
 
 const health = async () => (await fetch(`${server.url}/health`)).json() as Promise<{ status: string; prints: number; queued: number }>;
@@ -85,4 +91,66 @@ test('two prints at once both succeed, the second starting after the first ends'
   assert.deepEqual(both.map((r) => r.status), [200, 200]);
   const events = log.filter((l) => / started$| 200,/.test(l)).map((l) => (l.endsWith('started') ? 'start' : 'end'));
   assert.deepEqual(events, ['start', 'end', 'start', 'end']);
+});
+
+// Brief 4: kept alive and limited. Each test owns a server, so a restart or a limit never disturbs the others.
+const own = async (extra: Partial<Parameters<typeof serve>[0]>) => {
+  const lines: string[] = [];
+  const s = await serve({ ...options, log: (l) => lines.push(l), ...extra });
+  const previous = extras.close;
+  extras = { close: async () => { await s.close(); await previous(); } };
+  return { s, lines };
+};
+const post = (url: string, fields: Record<string, string> = {}) => fetch(`${url}/print`, { method: 'POST', body: paperForm({ created: CREATED, ...fields }) });
+const upTo = async (url: string) => (await fetch(`${url}/health`)).json() as Promise<{ status: string }>;
+
+test('a crashed browser: the next print succeeds after a restart, and /health said restarting meanwhile', async () => {
+  let browser: { close(): Promise<void> } | undefined;
+  const { s, lines } = await own({ onBrowser: (b) => { browser = b; } });
+  await browser!.close();
+  const seen = new Set<string>();
+  let stop = false;
+  const poll = (async () => { while (!stop) { seen.add((await upTo(s.url)).status); await new Promise((r) => setTimeout(r, 20)); } })();
+  const res = await post(s.url);
+  stop = true;
+  await poll;
+  assert.equal(res.status, 200, await res.clone().text());
+  assert.ok(seen.has('restarting'), `statuses seen: ${[...seen]}`);
+  assert.ok(lines.some((l) => /restarting the browser/.test(l)));
+  assert.equal((await upTo(s.url)).status, 'up');
+});
+
+test('restartAfter 2: three prints, one restart, after the second', async () => {
+  const { s, lines } = await own({ restartAfter: 2 });
+  for (let i = 0; i < 3; i++) assert.equal((await post(s.url)).status, 200);
+  const events = lines.filter((l) => /restarting the browser| 200,/.test(l)).map((l) => (/restarting/.test(l) ? 'restart' : 'print'));
+  assert.deepEqual(events, ['print', 'print', 'restart', 'print']);
+});
+
+test('a print over the time limit is a 504 within 2 s, and the next print succeeds', async () => {
+  const { s } = await own({ timeout: 1000 });
+  const slow = paperForm({ created: CREATED }, 'index.html');
+  const html = fs.readFileSync(path.join(FOLDER, 'index.html'), 'utf8').replace('</body>', '<script>for (const end = Date.now() + 3000; Date.now() < end;);</script></body>');
+  slow.append('index.html', new Blob([html]), 'index.html');
+  const t0 = performance.now();
+  const res = await fetch(`${s.url}/print`, { method: 'POST', body: slow });
+  assert.equal(res.status, 504, await res.clone().text());
+  assert.ok(performance.now() - t0 < 2000, `${performance.now() - t0} ms`);
+  const again = await fetch(`${s.url}/print`, { method: 'POST', body: paperForm({ created: CREATED }) });
+  assert.equal(again.status, 200, await again.clone().text());
+  assert.equal((await upTo(s.url)).status, 'up');
+});
+
+test('the warm-up works: the first forme write is under 1.5 times the median of the next four', async () => {
+  const { s, lines } = await own({});
+  const emit: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    assert.equal((await post(s.url, { 'caster.writer': 'forme' })).status, 200);
+    const line = lines.filter((l) => / 200,/.test(l)).at(-1)!;
+    emit.push(Number(/\(write ([\d.]+) ms\)/.exec(line)![1]));
+  }
+  const rest = emit.slice(1).sort((a, b) => a - b);
+  const median = (rest[1]! + rest[2]!) / 2;
+  console.log(`forme write ms, five prints: ${emit.join(', ')}; median of the last four ${median}`);
+  assert.ok(emit[0]! < 1.5 * median, `first ${emit[0]} against median ${median}`);
 });
