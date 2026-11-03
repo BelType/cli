@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFlagArgs, flagsHelp } from '../src/flags.ts';
+import { parseFlagArgs, flagsHelp, createdFromEnv } from '../src/flags.ts';
 import { chromiumSheet } from '../src/chromium.ts';
 import { BuildError, FlagError, ValidationError } from '@beltype/common/errors';
 
@@ -31,4 +31,10 @@ test('Chromium\'s print sheet for one page size, and the refusal for two', () =>
   assert.equal(sheet.page, '@page { size: 793.7px 1122.5px; margin: 0 }');
   assert.match(sheet.shadow, /beltype-page \{ break-after: page/);
   assert.throws(() => chromiumSheet([{ w: 793.7, h: 1122.5 }, { w: 500, h: 700 }]), (e: unknown) => e instanceof BuildError && /--printer caster/.test(e.message));
+});
+
+test('SOURCE_DATE_EPOCH is whole seconds, read as an ISO instant, and absent when unset', () => {
+  assert.equal(createdFromEnv({}), undefined);
+  assert.equal(createdFromEnv({ SOURCE_DATE_EPOCH: '1793750400' }), '2026-11-04T00:00:00.000Z');
+  assert.throws(() => createdFromEnv({ SOURCE_DATE_EPOCH: '1.5' }), ValidationError);
 });

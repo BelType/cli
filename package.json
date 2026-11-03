@@ -16,7 +16,8 @@
     "beltype": "dist/src/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "assets"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -32,7 +33,7 @@
     ]
   },
   "dependencies": {
-    "@beltype/caster": "0.1.5",
+    "@beltype/caster": "0.1.6",
     "@beltype/cicero": "0.1.5",
     "@beltype/common": "0.1.2",
     "mupdf": "1.28.1",

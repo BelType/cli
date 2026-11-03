@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@beltype/caster':
-        specifier: 0.1.5
-        version: 0.1.5
+        specifier: 0.1.6
+        version: 0.1.6
       '@beltype/cicero':
         specifier: 0.1.5
         version: 0.1.5
@@ -36,8 +36,8 @@ importers:
 
 packages:
 
-  '@beltype/caster@0.1.5':
-    resolution: {integrity: sha512-OO3BLnMiVgbDqjTTqDV4OT6QFgFiCXntqco8RDVj2pAwbE95K2nk/h6Vu29p8vTF1BaokvW6DpLE8fg+3Y4F/A==}
+  '@beltype/caster@0.1.6':
+    resolution: {integrity: sha512-WzG0gqFknZ2+NOwpgJFzKFy/9inwrlTYupUQZsB/nFv44xwcGrbeHSQxKMT1sMgfhZVTNK6DSv/OPn/66e7yWg==}
     engines: {node: '>=22'}
 
   '@beltype/cicero@0.1.5':
@@ -287,7 +287,7 @@ packages:
 
 snapshots:
 
-  '@beltype/caster@0.1.5':
+  '@beltype/caster@0.1.6':
     dependencies:
       '@beltype/common': 0.1.2
 
