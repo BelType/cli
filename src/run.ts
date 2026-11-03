@@ -14,7 +14,7 @@ import type { BrowserContext, Page } from 'playwright-core';
 import { ciceroEngine } from '@beltype/cicero/engine';
 import { BuildError } from '@beltype/common/errors';
 import { contentType } from '@beltype/common/mime';
-import { cutInPage, printInPage, pageSizesInPage, chromiumSheetInPage, type CasterTrace, type Measure, type Refusal } from './in-page.ts';
+import { cutInPage, printInPage, reseatInPage, pageSizesInPage, chromiumSheetInPage, type CasterTrace, type Measure, type Refusal } from './in-page.ts';
 import { chromiumSheet } from './chromium.ts';
 import { screenshotPages } from './check.ts';
 
@@ -30,8 +30,8 @@ export type Assets = { files: Record<string, string>; dirs: Record<string, strin
 /** The values a print runs under: Caster's given values (its defaults are resolved in the page), and Cicero's and the command line's resolved ones. */
 export type RunFlags = { caster: Record<string, unknown>; cicero: Record<string, unknown>; beltype: { printer: string; check: boolean } };
 
-/** What {@link printOnPage} asks beyond the flags. `progress` is told each step as it starts and each lap as it ends, for a trace. */
-export type RunOptions = { created?: string; sharedWriter?: boolean; measures?: boolean; progress?: { step(name: string): void; lap(key: string): void; cicero?(measures: Measure[]): void } };
+/** What {@link printOnPage} asks beyond the flags. `reseat` is the served document to write into the page's existing document in place of a navigation, for a page kept between prints. `progress` is told each step as it starts and each lap as it ends, for a trace. */
+export type RunOptions = { created?: string; reseat?: string; sharedWriter?: boolean; measures?: boolean; progress?: { step(name: string): void; lap(key: string): void; cicero?(measures: Measure[]): void } };
 
 export type Printed = { bytes: Buffer; pages: number; words: number; warnings: unknown[]; caster: CasterTrace | null; cicero: Measure[]; screens: Uint8Array[]; printMs?: number };
 
@@ -104,9 +104,12 @@ export async function routeDocument(page: Page, missing: Set<string>, o: { root:
  */
 export async function printOnPage(page: Page, missing: Set<string>, flags: RunFlags, o: { docPath: string } & RunOptions): Promise<Printed> {
   const { progress } = o;
-  page.on('pageerror', (error) => console.warn(`page error: ${error.message}`));
   progress?.step('load');
-  await page.goto(ORIGIN + o.docPath, { waitUntil: 'load' });
+  if (o.reseat !== undefined) await page.evaluate(reseatInPage, o.reseat);
+  else {
+    page.on('pageerror', (error) => console.warn(`page error: ${error.message}`));
+    await page.goto(ORIGIN + o.docPath, { waitUntil: 'load' });
+  }
   progress?.lap('load');
   progress?.step('cut');
   const cut = await page.evaluate(cutInPage, { cicero: flags.cicero, measures: o.measures === true });

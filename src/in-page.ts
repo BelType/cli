@@ -79,3 +79,19 @@ export function chromiumSheetInPage(sheet: { page: string; shadow: string }): vo
   shadow.textContent = sheet.shadow;
   document.querySelector('beltype-root')?.shadowRoot?.appendChild(shadow);
 }
+
+/**
+ * Seat `html` as the page's document without a navigation: `document.open()` keeps the `Window`, so the realm Caster measures from, its modules and its capability registry stay (Caster's DESIGN.md S87, S89). The `adoptedStyleSheets` the last document left on the Document are emptied; `load` is awaited as a navigation's would be.
+ *
+ * @remarks
+ * The previous Cicero client is released first (`release()`, Cicero 0.1.6, SPEC XII.7): the `Window` and its one `FontFaceSet` outlive `document.open()`, and an unreleased client heard a face of the next document's family arrive as a late fact and ran beside the host's run, which was let go after one page (measured: the paper after a document of another family cut 1 page, not 4). A released client deletes its handle, so the next document's module scripts must load under a URL of their own, which `serve.ts` keys per re-seat.
+ */
+export async function reseatInPage(html: string): Promise<void> {
+  await (window as any).__beltypeCicero?.release?.();
+  document.open();
+  document.adoptedStyleSheets = [];
+  const loaded = new Promise<void>((resolve) => window.addEventListener('load', () => resolve(), { once: true }));
+  document.write(html);
+  document.close();
+  await loaded;
+}
