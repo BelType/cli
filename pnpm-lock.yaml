@@ -34,8 +34,8 @@ importers:
         specifier: 0.18.14
         version: 0.18.14
       prosemirror-stores:
-        specifier: link:/Volumes/dev/Codeberg/prosemirror-stores
-        version: link:../../prosemirror-stores
+        specifier: git+https://codeberg.org/egildo/prosemirror-stores.git#3b281922616bf674c9338de73626b98b8f0a1d8d
+        version: git+https://codeberg.org/egildo/prosemirror-stores.git#3b281922616bf674c9338de73626b98b8f0a1d8d(prosemirror-history@1.5.1)(prosemirror-state@1.4.4)(prosemirror-transform@1.12.4)
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -320,6 +320,9 @@ packages:
     resolution: {integrity: sha512-kxL7msIffSuh9aaFAMD7rxAIuTRMAHMeBtgHW2yUdWw732ZNh4MehkF2gdjvtdmikkaIP9bFDDJOPlsvm7avrA==}
     engines: {node: '>=20.19.0'}
 
+  fontoxpath@3.34.0:
+    resolution: {integrity: sha512-7FgBQRohn4WR/2eVdYqZtKBFZkJNaiP4kGdfqS6bAg465og05ixGA2OgfMdxsO1mnX67+64JX/8JKclVqS+bzA==}
+
   html-escaper@3.0.3:
     resolution: {integrity: sha512-RuMffC89BOWQoY0WKGpIhn5gX3iI54O6nRA0yC124NYVtzjmFWBIiFd8M0x+ZdX0P9R4lADg1mgP8C7PxGOWuQ==}
 
@@ -345,6 +348,9 @@ packages:
     resolution: {integrity: sha512-GX0gsdbGVCgnRgbeGaubfjpBXyYRWOOCVeYh08bSQvDZqxz5ndXs1OTfAt/h36G1xvI94YIspsI0sVFqAV9+RQ==}
     engines: {node: '>=20.19.0'}
 
+  orderedmap@2.1.1:
+    resolution: {integrity: sha512-TvAWxi0nDe1j/rtMcWcIj94+Ffe6n7zhow33h40SKxmsmozs6dz/e+EajymfoFcHd7sxNn8yHM8839uixMOV6g==}
+
   pdfjs-dist@6.2.108:
     resolution: {integrity: sha512-YxFb+SQcodN2rnX9Tn3dHYlqfb7NjlzzfONPpJd+AKoKtUjEdevTfbC07d5TcczzOK6261auRkP/M8OBHs9vFQ==}
     engines: {node: '>=22.13.0 || >=24'}
@@ -353,6 +359,35 @@ packages:
     resolution: {integrity: sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==}
     engines: {node: '>=20'}
     hasBin: true
+
+  prosemirror-history@1.5.1:
+    resolution: {integrity: sha512-onlwnqKvgtFg6srZOmDOAhlAy1FIHQpOExORybX0S+DvJepE5tPALrB9iGet/2sqqqrelSnB10OoiOJqAvu2DA==}
+
+  prosemirror-model@1.25.12:
+    resolution: {integrity: sha512-Ue2gTmXMa7EhpLNhC7J+h4+ykD8ha12K6rrZFFKKJHBForfIStw5gJ6Zrf1mqqAa9NmpmEB4wp9bKmA4eUVjWg==}
+
+  prosemirror-state@1.4.4:
+    resolution: {integrity: sha512-6jiYHH2CIGbCfnxdHbXZ12gySFY/fz/ulZE333G6bPqIZ4F+TXo9ifiR86nAHpWnfoNjOb3o5ESi7J8Uz1jXHw==}
+
+  prosemirror-stores@git+https://codeberg.org/egildo/prosemirror-stores.git#3b281922616bf674c9338de73626b98b8f0a1d8d:
+    resolution: {commit: 3b281922616bf674c9338de73626b98b8f0a1d8d, repo: https://codeberg.org/egildo/prosemirror-stores.git, type: git}
+    version: 0.0.0
+    peerDependencies:
+      prosemirror-history: ^1.4.0
+      prosemirror-state: ^1.4.0
+      prosemirror-transform: ^1.12.0
+
+  prosemirror-transform@1.12.4:
+    resolution: {integrity: sha512-2/WuPum3pn+O/Vi2vzpi8210ICUe2kIPXdLYjQ09Pv5DtT5bcKWMJhAKPBwvpPjpp5iOYUVwVEr0gOM1BY1Mgw==}
+
+  prosemirror-view@1.42.9:
+    resolution: {integrity: sha512-bKbfzeKZOu2H2JQU2TaJmYu6EBcor3VnGIR4jR31cbEt1ztUnfUB6bKGV1+fJzOJdrVWR+tRU0208zM3oQx4wA==}
+
+  prsc@4.0.0:
+    resolution: {integrity: sha512-OmXQ2v76RlXNx/gqv7+oB6jyKnudJ/rsMfAIVexhbDFxXAJPoWKMxJkZU2ohlu4miCiSQCG+horf2DV4/kNc1Q==}
+
+  rope-sequence@1.3.4:
+    resolution: {integrity: sha512-UT5EDe2cu2E/6O4igUr5PSFs23nvvukicWHx6GnOPlHAiiYbzNuCRQCuiUdHJQcqKalLKlrYJnjY0ySGsXNQXQ==}
 
   source-map-js@1.2.2:
     resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
@@ -368,6 +403,12 @@ packages:
 
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
+
+  whynot@5.0.0:
+    resolution: {integrity: sha512-cGGfDPYYqoHoMWqXVc3G+N74u1FhFhrBa+pOO906b9ktRc/JFUdwroTkfPqjKzyoCLVcKr6yy6bYIcWT7jTg2A==}
+
+  xspattern@3.1.0:
+    resolution: {integrity: sha512-rxtOX8ORJizRqswIdZ72G3thKrHd0Q+TvyUCMByc5VdjDz1nkuZKfPXM3xGdrGi0fwEy+DDJN7DqtAZ06Re4bA==}
 
 snapshots:
 
@@ -562,6 +603,11 @@ snapshots:
 
   entities@8.1.0: {}
 
+  fontoxpath@3.34.0:
+    dependencies:
+      prsc: 4.0.0
+      xspattern: 3.1.0
+
   html-escaper@3.0.3: {}
 
   htmlparser2@10.1.0:
@@ -587,11 +633,51 @@ snapshots:
     dependencies:
       boolbase: 2.0.0
 
+  orderedmap@2.1.1: {}
+
   pdfjs-dist@6.2.108:
     optionalDependencies:
       '@napi-rs/canvas': 1.1.0
 
   playwright-core@1.63.0: {}
+
+  prosemirror-history@1.5.1:
+    dependencies:
+      prosemirror-state: 1.4.4
+      prosemirror-transform: 1.12.4
+      prosemirror-view: 1.42.9
+      rope-sequence: 1.3.4
+
+  prosemirror-model@1.25.12:
+    dependencies:
+      orderedmap: 2.1.1
+
+  prosemirror-state@1.4.4:
+    dependencies:
+      prosemirror-model: 1.25.12
+      prosemirror-transform: 1.12.4
+      prosemirror-view: 1.42.9
+
+  prosemirror-stores@git+https://codeberg.org/egildo/prosemirror-stores.git#3b281922616bf674c9338de73626b98b8f0a1d8d(prosemirror-history@1.5.1)(prosemirror-state@1.4.4)(prosemirror-transform@1.12.4):
+    dependencies:
+      fontoxpath: 3.34.0
+      prosemirror-history: 1.5.1
+      prosemirror-state: 1.4.4
+      prosemirror-transform: 1.12.4
+
+  prosemirror-transform@1.12.4:
+    dependencies:
+      prosemirror-model: 1.25.12
+
+  prosemirror-view@1.42.9:
+    dependencies:
+      prosemirror-model: 1.25.12
+      prosemirror-state: 1.4.4
+      prosemirror-transform: 1.12.4
+
+  prsc@4.0.0: {}
+
+  rope-sequence@1.3.4: {}
 
   source-map-js@1.2.2: {}
 
@@ -621,3 +707,9 @@ snapshots:
   uhyphen@0.2.0: {}
 
   undici-types@6.21.0: {}
+
+  whynot@5.0.0: {}
+
+  xspattern@3.1.0:
+    dependencies:
+      whynot: 5.0.0

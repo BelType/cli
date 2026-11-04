@@ -43,7 +43,7 @@
     "@beltype/specimens": "0.1.0",
     "@types/node": "^22.20.5",
     "linkedom": "0.18.14",
-    "prosemirror-stores": "link:/Volumes/dev/Codeberg/prosemirror-stores",
+    "prosemirror-stores": "git+https://codeberg.org/egildo/prosemirror-stores.git#3b281922616bf674c9338de73626b98b8f0a1d8d",
     "typescript": "7.0.2"
   },
   "bugs": {
