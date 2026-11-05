@@ -17,11 +17,11 @@ import { ciceroFlags } from '@beltype/cicero/flags';
 import type { CasterTrace, Measure } from './in-page.ts';
 import { cliFlags, tableOf, type Given } from './flags.ts';
 import { checkPages, type CheckResult } from './check.ts';
-import { ARGS, VIEWPORT, documentAssets, servedHtml, routeCompanions, routeDocument, printOnPage, refusal } from './run.ts';
+import { ARGS, VIEWPORT, documentAssets, servedHtml, routeCompanions, routeDocument, printOnPage, refusal, deferralLine } from './run.ts';
 
 export { spliceHead } from './run.ts';
 
-export type PrintResult = { output: string; pages: number; words: number; ms: number; check?: CheckResult };
+export type PrintResult = { output: string; pages: number; words: number; deferred: number; ms: number; check?: CheckResult };
 
 /** What a run asks for beyond the document: the values given per owner (anything not given is its default), and where to write the trace. */
 export type PrintOptions = { given?: Partial<Given>; trace?: string; created?: string };
@@ -91,6 +91,7 @@ export async function print(input: string, output: string, options: PrintOptions
         mark = performance.now();
         trace.caster = printed.caster;
         for (const warning of printed.warnings) console.warn(typeof warning === 'string' ? warning : JSON.stringify(warning));
+        for (const deferral of printed.deferred) console.warn(deferralLine(deferral));
       } else lap('print');
       const { bytes, pages, words, screens } = printed;
       step = 'close';
@@ -107,7 +108,7 @@ export async function print(input: string, output: string, options: PrintOptions
         check = await checkPages(screens, bytes, path.resolve(output).replace(/\.pdf$/i, '') + '.check', flags.beltype.printer);
         lap('check');
       }
-      return { output, pages, words, ms: performance.now() - started, ...(check ? { check } : {}) };
+      return { output, pages, words, deferred: printed.deferred.length, ms: performance.now() - started, ...(check ? { check } : {}) };
     } finally {
       await browser.close();
     }

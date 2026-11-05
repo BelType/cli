@@ -14,7 +14,7 @@ import type { BrowserContext, Page } from 'playwright-core';
 import { ciceroEngine } from '@beltype/cicero/engine';
 import { BuildError } from '@beltype/common/errors';
 import { contentType } from '@beltype/common/mime';
-import { cutInPage, printInPage, reseatInPage, pageSizesInPage, chromiumSheetInPage, type CasterTrace, type Measure, type Refusal } from './in-page.ts';
+import { cutInPage, printInPage, reseatInPage, pageSizesInPage, chromiumSheetInPage, type CasterTrace, type Deferral, type Measure, type Refusal } from './in-page.ts';
 import { chromiumSheet } from './chromium.ts';
 import { screenshotPages } from './check.ts';
 
@@ -33,7 +33,7 @@ export type RunFlags = { caster: Record<string, unknown>; cicero: Record<string,
 /** What {@link printOnPage} asks beyond the flags. `reseat` is the served document to write into the page's existing document in place of a navigation, for a page kept between prints. `progress` is told each step as it starts and each lap as it ends, for a trace. */
 export type RunOptions = { created?: string; reseat?: string; sharedWriter?: boolean; measures?: boolean; progress?: { step(name: string): void; lap(key: string): void; cicero?(measures: Measure[]): void } };
 
-export type Printed = { bytes: Buffer; pages: number; words: number; warnings: unknown[]; caster: CasterTrace | null; cicero: Measure[]; screens: Uint8Array[]; printMs?: number };
+export type Printed = { bytes: Buffer; pages: number; words: number; warnings: unknown[]; deferred: Deferral[]; caster: CasterTrace | null; cicero: Measure[]; screens: Uint8Array[]; printMs?: number };
 
 /** The companions' built folders and files, each folder found from a module it exports: common exports no `package.json`. */
 export function documentAssets(): Assets {
@@ -48,6 +48,9 @@ export function servedHtml(html: string): string {
   const imports = Object.fromEntries(['errors', 'data-beltype', 'flags', 'mime'].map((m) => [`@beltype/common/${m}`, `/_beltype/common/${m}.js`]));
   return spliceHead(html, `<script type="importmap">${JSON.stringify({ imports })}</script>\n  ${ciceroEngine.headHtml('/')}`);
 }
+
+/** One deferral as a line of its own after the run, so a print that approximated or dropped something says so (codeberg.org/BelType/cli issue 1). */
+export const deferralLine = (d: Deferral): string => `deferred: ${d.path}: ${d.feature}, painted as ${d.paintedAs}`;
 
 /** `fragment` at the top of the document's `<head>`, ahead of the author's own sheets and scripts. */
 export function spliceHead(html: string, fragment: string): string {
@@ -128,11 +131,11 @@ export async function printOnPage(page: Page, missing: Set<string>, flags: RunFl
     const sheet = chromiumSheet(await page.evaluate(pageSizesInPage));
     await page.evaluate(chromiumSheetInPage, sheet);
     const bytes = await page.pdf({ preferCSSPageSize: true, printBackground: true });
-    return { bytes, pages: await page.locator('beltype-page').count(), words: 0, warnings: [], caster: null, cicero: measures, screens };
+    return { bytes, pages: await page.locator('beltype-page').count(), words: 0, warnings: [], deferred: [], caster: null, cicero: measures, screens };
   }
   const printed = await page.evaluate(printInPage, { options: flags.caster, ...(o.created !== undefined ? { created: o.created } : {}), ...(o.sharedWriter ? { sharedWriter: true } : {}) });
   if ('refused' in printed) throw refusal(missing, printed);
-  return { bytes: Buffer.from(printed.base64, 'base64'), pages: printed.pages, words: printed.words, warnings: printed.warnings, caster: printed.caster, cicero: measures, screens, printMs: printed.printMs };
+  return { bytes: Buffer.from(printed.base64, 'base64'), pages: printed.pages, words: printed.words, warnings: printed.warnings, deferred: printed.deferred, caster: printed.caster, cicero: measures, screens, printMs: printed.printMs };
 }
 
 /** The run's refusal: what it could not answer comes first, because a missing file's name says more than the step it broke. */
