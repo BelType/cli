@@ -14,7 +14,7 @@ export type Refusal = { refused: string; at: string };
 export type Measure = { name: string; ms: number; detail: unknown };
 
 /**
- * Caster's `prepare()` makes markers real elements before the cut, then Cicero's client paginates the whole document.
+ * Caster's `prepare()` makes markers real elements before the cut, and its `ready` loads the faces the document's SVG images set text in, which the document itself never asks for (codeberg.org/BelType/caster issue 11); then Cicero's client paginates the whole document. A face that arrived after the cut would make Cicero cut again under the printer.
  *
  * @param run - `cicero` is the resolved Cicero flags, handed to `run()`; `measures` asks for Cicero's own timings, read after the cut.
  */
@@ -23,7 +23,7 @@ export async function cutInPage(run: { cicero: Record<string, unknown>; measures
   try {
     // @ts-expect-error a URL the page resolves, not a module the checker can find. A literal on purpose: a computed `import()` is wrapped by `rewriteRelativeImportExtensions` in a helper the page does not have.
     const caster = await import('/_beltype/caster/src/index.js');
-    caster.prepare(document);
+    await caster.prepare(document).ready;
     at = 'paginate';
     const cicero = (window as any).__beltypeCicero;
     if (!cicero?.run) return { refused: 'the document loaded no Cicero client, so there is nothing to paginate with', at };
