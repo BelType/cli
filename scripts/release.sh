@@ -13,7 +13,7 @@ grep -q "^## $v " "${base}CHANGELOG.md" || { echo "${base}CHANGELOG.md has no he
 git rev-parse "$tag" >/dev/null 2>&1 && { echo "tag $tag exists"; exit 1; }
 npm view "$name@$v" version >/dev/null 2>&1 && { echo "$name@$v is on npm already"; exit 1; }
 if npm view "$name" version >/dev/null 2>&1; then
-  npm="npx -y npm@12 --loglevel=error"
+  npm="npx -y npm@12.2.1 --loglevel=error"
   if ! $npm trust list "$name" 2>&1 | grep -q "$slug"; then
     echo "registering the trusted publisher for $name (2FA)"
     $npm trust github "$name" --file release.yml --repo "$slug" --allow-publish
