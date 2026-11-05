@@ -36,6 +36,9 @@ export async function cutInPage(run: { cicero: Record<string, unknown>; measures
   }
 }
 
+/** A feature Caster drew differently or not at all, as its report's `deferred` names it: the element's path, the feature, and what it was painted as. */
+export type Deferral = { path: string; feature: string; paintedAs: string };
+
 /** What Caster's report says of its own time, as the trace carries it. */
 export type CasterTrace = { ms: Record<string, number>; timing: unknown; fonts: { id: string; ms: unknown }[] };
 
@@ -44,7 +47,7 @@ export type CasterTrace = { ms: Record<string, number>; timing: unknown; fonts: 
  *
  * @param run - `options` is the resolved Caster flags; `created` is the instant the file says it was made, absent for the wall clock; `sharedWriter` has forme write through a `SharedWorker` the page opens (Caster's `formeSharedWorkerUrl()`), so a host that keeps the page's browser alive keeps the writer warm. `printMs` in the answer is Caster's own time in the page, before the bytes are encoded.
  */
-export async function printInPage(run: { options: Record<string, unknown>; created?: string; sharedWriter?: boolean }): Promise<{ base64: string; pages: number; words: number; warnings: unknown[]; printMs: number; caster: CasterTrace } | Refusal> {
+export async function printInPage(run: { options: Record<string, unknown>; created?: string; sharedWriter?: boolean }): Promise<{ base64: string; pages: number; words: number; warnings: unknown[]; deferred: Deferral[]; printMs: number; caster: CasterTrace } | Refusal> {
   try {
     const t0 = performance.now();
     // @ts-expect-error a URL the page resolves, not a module the checker can find. A literal on purpose: a computed `import()` is wrapped by `rewriteRelativeImportExtensions` in a helper the page does not have.
@@ -55,7 +58,7 @@ export async function printInPage(run: { options: Record<string, unknown>; creat
     const bytes: Uint8Array = printed.bytes;
     let binary = '';
     for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    return { base64: btoa(binary), pages: printed.report.timing?.pages ?? 0, words: printed.report.timing?.words ?? 0, warnings: printed.report.warnings ?? [], printMs, caster: { ms: printed.report.ms ?? {}, timing: printed.report.timing ?? null, fonts: (printed.report.emission?.faces ?? []).map((f: { id: string; ms?: unknown }) => ({ id: f.id, ms: f.ms ?? null })) } };
+    return { base64: btoa(binary), pages: printed.report.timing?.pages ?? 0, words: printed.report.timing?.words ?? 0, warnings: printed.report.warnings ?? [], deferred: printed.report.deferred ?? [], printMs, caster: { ms: printed.report.ms ?? {}, timing: printed.report.timing ?? null, fonts: (printed.report.emission?.faces ?? []).map((f: { id: string; ms?: unknown }) => ({ id: f.id, ms: f.ms ?? null })) } };
   } catch (error) {
     return { refused: String((error as Error | undefined)?.message ?? error), at: 'print' };
   }

@@ -20,7 +20,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { ciceroFlags } from '@beltype/cicero/flags';
 import { BuildError, ValidationError, FlagError } from '@beltype/common/errors';
 import { cliFlags, createdFromEnv, parseFlagArgs, type Given } from './flags.ts';
-import { ARGS, ORIGIN, VIEWPORT, documentAssets, servedHtml, routeCompanions, routeDocument, printOnPage, refusal, type Assets, type Printed } from './run.ts';
+import { ARGS, ORIGIN, VIEWPORT, documentAssets, servedHtml, routeCompanions, routeDocument, printOnPage, refusal, deferralLine, type Assets, type Printed } from './run.ts';
 
 /** `maxUpload` is in bytes and `timeout` in milliseconds here; the command line speaks megabytes and seconds. `onBrowser` is told each browser as it starts, for tests. */
 export type ServeOptions = { host: string; port: number; maxUpload: number; timeout: number; restartAfter: number; log?: (line: string) => void; onBrowser?: (browser: Browser) => void };
@@ -249,7 +249,8 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       if (req.method !== 'POST') return text(405, 'beltype serve: /print takes POST.');
       const { bytes, printed, writer } = await print(req);
       for (const warning of printed.warnings) log(`beltype serve: warning: ${typeof warning === 'string' ? warning : JSON.stringify(warning)}`);
-      send(200, 'application/pdf', bytes, { 'x-beltype-pages': printed.pages, 'x-beltype-words': printed.words, 'x-beltype-warnings': printed.warnings.length });
+      for (const deferral of printed.deferred) log(`beltype serve: ${deferralLine(deferral)}`);
+      send(200, 'application/pdf', bytes, { 'x-beltype-pages': printed.pages, 'x-beltype-words': printed.words, 'x-beltype-warnings': printed.warnings.length, 'x-beltype-deferred': printed.deferred.length });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const status = error instanceof HttpError ? error.status : error instanceof BuildError ? 422 : error instanceof ValidationError || error instanceof FlagError ? 400 : 500;
