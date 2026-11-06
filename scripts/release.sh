@@ -11,6 +11,7 @@ git diff --quiet && git diff --cached --quiet || { echo "uncommitted changes"; e
 grep -q "^## $v " "${base}CHANGELOG.md" || { echo "${base}CHANGELOG.md has no heading for $v"; exit 1; }
 git rev-parse "$tag" >/dev/null 2>&1 && { echo "tag $tag exists"; exit 1; }
 npm view "$name@$v" version >/dev/null 2>&1 && { echo "$name@$v is on npm already"; exit 1; }
+pnpm licenses list --prod --json | grep -q '"AGPL' && { echo "a production dependency is under the AGPL"; exit 1; }
 git tag "$tag"
 git push origin HEAD "$tag"
 echo "pushed $tag: the workflow publishes $name@$v in a minute or two"

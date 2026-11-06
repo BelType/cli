@@ -16,7 +16,7 @@ import { chromium } from 'playwright-core';
 import { ciceroFlags } from '@beltype/cicero/flags';
 import type { CasterTrace, Measure } from './in-page.ts';
 import { cliFlags, tableOf, type Given } from './flags.ts';
-import { checkPages, type CheckResult } from './check.ts';
+import { checkPages, requireMupdf, type CheckResult } from './check.ts';
 import { ARGS, VIEWPORT, documentAssets, servedHtml, routeCompanions, routeDocument, printOnPage, refusal, deferralLine } from './run.ts';
 
 export { spliceHead } from './run.ts';
@@ -62,6 +62,7 @@ export async function print(input: string, output: string, options: PrintOptions
   let step = 'launch';
   let chromiumVersion = 'unknown';
   try {
+    if (flags.beltype.check) await requireMupdf();
     const html = fs.readFileSync(input, 'utf8');
     const root = path.dirname(path.resolve(input));
     const docPath = `/${encodeURIComponent(path.basename(input))}`;
