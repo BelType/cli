@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **mupdf is an optional peer.** This package is MIT and an install brought mupdf, under the AGPL-3.0, though only `--check` loads it. `--check` without it refuses before the run, naming the package, its licence and the command, and `scripts/release.sh` refuses a release whose production dependencies name an AGPL licence.
 - **Caster's deferrals are said on the command line** (codeberg.org/BelType/cli issue 1). After the run, `beltype print` prints one line on stderr for each feature Caster drew differently or not at all, naming the element, the feature and what it was painted as (`deferred: div[0]: box-shadow, painted as raster at 300 dpi`); `beltype serve` logs the same lines and answers their count in `x-beltype-deferred`; `print()` returns it as `deferred`. A deferral is reported beside the warnings, not as one: the print still succeeds.
 - **The cut waits for the faces an SVG image's text needs.** `beltype print` awaits Caster's `prepare(document).ready` before Cicero cuts, so a face only an SVG `<img>` names is loaded first and embedded (codeberg.org/BelType/caster issue 11). With a Caster that has no `ready`, nothing changes.
 - **A JSON-LD data block no longer costs the kept page.** `<script type="application/ld+json">`, with that one attribute, is data the browser never runs, so `beltype serve` leaves it out of the script test, up to its first `</script`.

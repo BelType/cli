@@ -36,13 +36,21 @@
     "@beltype/caster": "0.1.7",
     "@beltype/cicero": "0.1.6",
     "@beltype/common": "0.1.2",
-    "mupdf": "1.28.1",
     "playwright-core": "1.63.0"
+  },
+  "peerDependencies": {
+    "mupdf": "1.28.1"
+  },
+  "peerDependenciesMeta": {
+    "mupdf": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@beltype/specimens": "0.1.0",
     "@types/node": "^22.20.5",
     "linkedom": "0.18.14",
+    "mupdf": "1.28.1",
     "prosemirror-stores": "git+https://codeberg.org/egildo/prosemirror-stores.git#3b281922616bf674c9338de73626b98b8f0a1d8d",
     "typescript": "7.0.2"
   },

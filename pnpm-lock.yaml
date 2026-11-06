@@ -17,9 +17,6 @@ importers:
       '@beltype/common':
         specifier: 0.1.2
         version: 0.1.2
-      mupdf:
-        specifier: 1.28.1
-        version: 1.28.1
       playwright-core:
         specifier: 1.63.0
         version: 1.63.0
@@ -33,6 +30,9 @@ importers:
       linkedom:
         specifier: 0.18.14
         version: 0.18.14
+      mupdf:
+        specifier: 1.28.1
+        version: 1.28.1
       prosemirror-stores:
         specifier: git+https://codeberg.org/egildo/prosemirror-stores.git#3b281922616bf674c9338de73626b98b8f0a1d8d
         version: git+https://codeberg.org/egildo/prosemirror-stores.git#3b281922616bf674c9338de73626b98b8f0a1d8d(prosemirror-history@1.5.1)(prosemirror-state@1.4.4)(prosemirror-transform@1.12.4)
