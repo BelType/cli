@@ -194,6 +194,7 @@ test('keptRoad: a document with a script of its own, or any way to run one, is r
   // A JSON-LD data block never runs, so it does not count; only the opening tag with that one attribute, and only up to the first </script, is let through.
   assert.equal(keptRoad('<script type="application/ld+json">{"@graph":[]}</script><p>x</p>'), true);
   assert.equal(keptRoad("<SCRIPT TYPE='application/LD+JSON'>{}</script >"), true);
+  assert.equal(keptRoad('<script type="application/ld+json" id="__beltype-store">{}</script><p>x</p>'), true);
   for (const bad of ['<script type="application/ld+json" onload="1">{}</script>', '<script type="application/ld+json">{}</script x><script>1</script>', '<script type="application/ld+json">{}</script><script>1</script>', '<script type="module">1</script>', '<script type="application/ld+json" src="x.js"></script>']) assert.equal(keptRoad(bad), false, bad);
 });
 
@@ -283,5 +284,30 @@ test('a refusal on the kept page (the paper-12 shuffle) is the fresh page\'s, an
     assert.ok(Buffer.from(await next.arrayBuffer()).equals(fs.readFileSync(again)));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a document on the kept page prints its own font, though the one before used the same name', async () => {
+  const serif = fs.readFileSync(path.join(FOLDER, 'fonts', 'SourceSerif4-Variable.woff2'));
+  const doc = (font: Buffer) => {
+    const form = new FormData();
+    form.append('index.html', new Blob([WARMUP]), 'index.html');
+    form.append('warm.woff2', new Blob([new Uint8Array(font)]), 'warm.woff2');
+    form.append('caster.writer', 'forme');
+    form.append('created', CREATED);
+    return form;
+  };
+  const bytes = async (at: string, font: Buffer) => {
+    const res = await fetch(`${at}/print`, { method: 'POST', body: doc(font) });
+    assert.equal(res.status, 200, await res.clone().text());
+    return Buffer.from(await res.arrayBuffer());
+  };
+  await bytes(server.url, fs.readFileSync(WARMUP_FONT));
+  const after = await bytes(server.url, serif);
+  const alone = await serve({ ...options, log: () => {} });
+  try {
+    assert.ok(after.equals(await bytes(alone.url, serif)), 'the print after another font is the print with this font alone');
+  } finally {
+    await alone.close();
   }
 });

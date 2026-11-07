@@ -7,6 +7,8 @@
  * @packageDocumentation
  */
 
+import type { KeepAnswer, MergeData } from './merge-tab.ts';
+
 /** What either step answers when it refuses. */
 export type Refusal = { refused: string; at: string };
 
@@ -16,9 +18,9 @@ export type Measure = { name: string; ms: number; detail: unknown };
 /**
  * Caster's `prepare()` makes markers real elements before the cut, and its `ready` loads the faces the document's SVG images set text in, which the document itself never asks for (codeberg.org/BelType/caster issue 11); then Cicero's client paginates the whole document. A face that arrived after the cut would make Cicero cut again under the printer.
  *
- * @param run - `cicero` is the resolved Cicero flags, handed to `run()`; `measures` asks for Cicero's own timings, read after the cut.
+ * @param run - `cicero` is the resolved Cicero flags, handed to `run()`; `measures` asks for Cicero's own timings, read after the cut; `resumeAt` is the address of the first box a mail merge replaced, which makes the cut a resumed run.
  */
-export async function cutInPage(run: { cicero: Record<string, unknown>; measures: boolean }): Promise<{ pages: number; measures: Measure[] } | Refusal> {
+export async function cutInPage(run: { cicero: Record<string, unknown>; measures: boolean; resumeAt?: unknown }): Promise<{ pages: number; measures: Measure[] } | Refusal> {
   let at = 'prepare';
   try {
     // @ts-expect-error a URL the page resolves, not a module the checker can find. A literal on purpose: a computed `import()` is wrapped by `rewriteRelativeImportExtensions` in a helper the page does not have.
@@ -27,12 +29,39 @@ export async function cutInPage(run: { cicero: Record<string, unknown>; measures
     at = 'paginate';
     const cicero = (window as any).__beltypeCicero;
     if (!cicero?.run) return { refused: 'the document loaded no Cicero client, so there is nothing to paginate with', at };
-    const answer = await cicero.run(run.cicero);
+    const answer = await cicero.run(run.resumeAt ? { ...run.cicero, resumeAt: run.resumeAt } : run.cicero);
     await document.fonts.ready;
     const measures = run.measures ? performance.getEntriesByType('measure').filter((m) => m.name.startsWith('cicero:')).map((m) => ({ name: m.name, ms: Math.round(m.duration * 100) / 100, detail: (m as PerformanceMeasure).detail ?? null })) : [];
     return { pages: answer.pages, measures };
   } catch (error) {
     return { refused: String((error as Error | undefined)?.message ?? error), at };
+  }
+}
+
+/**
+ * A mail merge's first customer, on the template just seated (`src/merge-tab.ts`, bundled and imported by URL).
+ *
+ * @param run - `template` is the template as it was uploaded; `data` the customer.
+ */
+export async function seatMergeInPage(run: { template: string; data: MergeData }): Promise<{ done: true } | Refusal> {
+  try {
+    // @ts-expect-error a URL the page resolves, not a module the checker can find.
+    const merge = await import('/_beltype/merge/merge.js');
+    merge.seat(run.template, run.data);
+    return { done: true };
+  } catch (error) {
+    return { refused: String((error as Error | undefined)?.message ?? error), at: 'merge' };
+  }
+}
+
+/** A later customer of a mail merge, on the document already presented: the changed top-level boxes replaced, or why the template must be seated again. */
+export async function keepMergeInPage(data: MergeData): Promise<KeepAnswer | Refusal> {
+  try {
+    // @ts-expect-error a URL the page resolves, not a module the checker can find.
+    const merge = await import('/_beltype/merge/merge.js');
+    return merge.keep(data);
+  } catch (error) {
+    return { refused: String((error as Error | undefined)?.message ?? error), at: 'merge' };
   }
 }
 

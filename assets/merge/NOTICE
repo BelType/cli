@@ -1,0 +1,7 @@
+merge.js is built by scripts/bundle-merge.ts from src/merge-tab.ts and these packages:
+
+- prosemirror-stores (codeberg.org/egildo/prosemirror-stores), Egildo Tagliareni
+- fontoxpath 3.34.0, MIT
+- xspattern 3.1.0, MIT
+- whynot 5.0.0, MIT
+- prsc 4.0.0, MIT
