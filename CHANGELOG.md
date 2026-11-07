@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **`beltype serve` says what the file claims.** A PDF answer carries `x-beltype-standard`, read from Caster's report of the print: `pdf-2.0; pdf-ua-2` where the file claims PDF/UA-2, and `pdf-2.0` alone under `caster.standard=none` or where Caster guessed a tag for an element it could not name and withdrew the claim. A caller no longer has to open the file's XMP to know. A print under `beltype.printer=chromium` is Chromium's own file, which Caster never saw, and carries no header.
+- **The README blamed the wrong package for the running head.** "3. Results" from `content()` alone is Caster's: its preparation turns the heading's `::before` into a real span before Cicero cuts, and `content()` then reads it. The README said Cicero.
 - **`beltype serve` answers only its own name and no other origin.** A request whose `Host` is not the address it is bound to, or that carries an `Origin` of another page, is refused with `403` before its body is read: a form needs no preflight, so any page open in your browser could otherwise post a document to a running server. Bound to `0.0.0.0` or `::`, the server cannot know the name it is reached by, and holds the `Origin` alone.
 - **An `on…=` attribute with no space before it no longer takes the kept page.** `<svg/onload=…>`, `<img src=x"onerror=…>` and `<svg><set/onbegin=…>` now send a document to a page of its own, and a template that holds one is refused.
 - **Chromium runs in its sandbox.** `beltype print` and `beltype serve` launch with the sandbox; `--no-sandbox` launches without it, for a container that runs as root, where Chromium will not start in it.

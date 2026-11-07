@@ -34,7 +34,7 @@ beltype serve --port 3000
 curl -F index.html=@index.html -F paper.css=@paper.css -F fonts/a.woff2=@fonts/a.woff2 -F caster.writer=forme http://127.0.0.1:3000/print -o out.pdf
 ```
 
-- `POST /print`, `multipart/form-data`. `index.html` is required; every other file keeps its form field name as its path relative to the document (`fonts/a.woff2`), plain segments with `/` separators, never absolute and never `..`. A field that is not a file is a flag, `<owner>.<name>` = value (`caster.writer=forme`, `cicero.…`); `beltype.check` is refused. A field `created` (an ISO 8601 instant) fixes the file's dates, else `SOURCE_DATE_EPOCH`, else the clock. The answer is `200 application/pdf` with `X-Beltype-Pages`, `X-Beltype-Words` and `X-Beltype-Warnings` (the count); `422` with `beltype print`'s sentence where the document is refused (a file it asked for and was not given, among them); `400` for a bad request; `413` over the upload limit; `504` over the time limit; `500` otherwise, after which the browser is restarted.
+- `POST /print`, `multipart/form-data`. `index.html` is required; every other file keeps its form field name as its path relative to the document (`fonts/a.woff2`), plain segments with `/` separators, never absolute and never `..`. A field that is not a file is a flag, `<owner>.<name>` = value (`caster.writer=forme`, `cicero.…`); `beltype.check` is refused. A field `created` (an ISO 8601 instant) fixes the file's dates, else `SOURCE_DATE_EPOCH`, else the clock. The answer is `200 application/pdf` with `X-Beltype-Pages`, `X-Beltype-Words`, `X-Beltype-Warnings` (the count) and `X-Beltype-Standard`, what the file claims as Caster reports it: `pdf-2.0; pdf-ua-2`, or `pdf-2.0` alone under `caster.standard=none` or where Caster guessed a tag and withdrew the claim (a print under `beltype.printer=chromium` is Chromium's own file and carries none); `422` with `beltype print`'s sentence where the document is refused (a file it asked for and was not given, among them); `400` for a bad request; `413` over the upload limit; `504` over the time limit; `500` otherwise, after which the browser is restarted.
 - `GET /health`: `{ "status": "up", "chromium": …, "prints": …, "queued": … }`, or `503` with `"status": "restarting"` while the browser starts again.
 - `--host 127.0.0.1`, `--port 3000`, `--max-upload 50` (MB), `--timeout 60` (seconds per print), `--restart-after 100` (prints before the browser is restarted), `--no-sandbox` (as `beltype print`'s).
 - A request whose `Host` is not the bound address and port, or whose `Origin` is another page's, is refused with `403` before its body is read, since any page in a browser can post a form without asking first. Bound to `0.0.0.0` or `::`, the server cannot know the name it is reached by, so it holds only the `Origin` against the `Host` the request names.
@@ -64,7 +64,7 @@ Found while writing the sample, and left out of it until the companions print th
 
 - `counter(pages)` in a margin box: Caster refuses the content.
 - SVG text under `transform="rotate(…)"`: Caster draws it broken.
-- `content()` in `string-set` includes the heading's `::before` under Cicero, so the sample's running section reads "3. Results" from `content()` alone.
+- `content()` in `string-set` includes the heading's `::before`, so the sample's running section reads "3. Results" from `content()` alone. This is Caster's, not Cicero's: Caster's preparation turns the heading's `::before` into a real span before Cicero cuts, and `content()` then reads it.
 
 ## Requirements
 
