@@ -23,8 +23,8 @@ export { spliceHead } from './run.ts';
 
 export type PrintResult = { output: string; pages: number; words: number; deferred: number; ms: number; check?: CheckResult };
 
-/** What a run asks for beyond the document: the values given per owner (anything not given is its default), and where to write the trace. */
-export type PrintOptions = { given?: Partial<Given>; trace?: string; created?: string };
+/** What a run asks for beyond the document: the values given per owner (anything not given is its default), and where to write the trace. `sandbox` false launches Chromium without its sandbox, for a container that runs as root. */
+export type PrintOptions = { given?: Partial<Given>; trace?: string; created?: string; sandbox?: boolean };
 
 /** Where a run's time went, in three layers, with the versions and flags it used. */
 export type Trace = {
@@ -70,7 +70,7 @@ export async function print(input: string, output: string, options: PrintOptions
     const served = servedHtml(html);
 
     const missing = new Set<string>();
-    const browser = await chromium.launch({ headless: true, args: ARGS });
+    const browser = await chromium.launch({ headless: true, args: ARGS, chromiumSandbox: options.sandbox ?? true });
     chromiumVersion = browser.version();
     lap('launch');
     try {

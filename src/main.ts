@@ -4,7 +4,7 @@
  * @remarks
  * Two verbs: `beltype print <file.html> [-o <file.pdf>]` and `beltype serve` (see `serve.ts`). The output defaults to the input's name with `.pdf`, beside it. A flag the parser does not know is refused, never ignored.
  *
- * Flags have one shape across BelType: `--flag <owner>.<name>=<value>`, repeatable, names a row of a package's table (`beltype print --help` lists them all). `--printer` and `--check` are the command line's own rows spelled plainly; `--trace <file>` takes a free string, so it is a plain option beside the table.
+ * Flags have one shape across BelType: `--flag <owner>.<name>=<value>`, repeatable, names a row of a package's table (`beltype print --help` lists them all). `--printer` and `--check` are the command line's own rows spelled plainly; `--trace <file>` takes a free string, so it is a plain option beside the table, and so is `--no-sandbox`, which belongs to the launch and to no package's table.
  *
  * @packageDocumentation
  */
@@ -16,7 +16,7 @@ import { cliFlags, createdFromEnv, flagsHelp, parseFlagArgs } from './flags.ts';
 import { print } from './print.ts';
 import { serve } from './serve.ts';
 
-const USAGE = 'usage: beltype serve [--host 127.0.0.1] [--port 3000] [--max-upload 50] [--timeout 60] [--restart-after 100]\n       beltype print <file.html> [-o <file.pdf>] [--printer caster|chromium] [--check] [--trace <file.json>] [--flag <owner>.<name>=<value>]...';
+const USAGE = 'usage: beltype serve [--host 127.0.0.1] [--port 3000] [--max-upload 50] [--timeout 60] [--restart-after 100] [--no-sandbox]\n       beltype print <file.html> [-o <file.pdf>] [--printer caster|chromium] [--check] [--trace <file.json>] [--no-sandbox] [--flag <owner>.<name>=<value>]...';
 
 async function serveVerb(argv: string[]): Promise<void> {
   const { values } = parseArgs({ args: argv, options: {
@@ -24,7 +24,8 @@ async function serveVerb(argv: string[]): Promise<void> {
     port: { type: 'string', default: '3000' },
     'max-upload': { type: 'string', default: '50' },
     timeout: { type: 'string', default: '60' },
-    'restart-after': { type: 'string', default: '100' }
+    'restart-after': { type: 'string', default: '100' },
+    'no-sandbox': { type: 'boolean' }
   } });
   const number = (name: string, raw: string, min: number) => {
     if (!/^\d+$/.test(raw) || Number(raw) < min) throw new ValidationError(`beltype serve: --${name} is a whole number of at least ${min}; got "${raw}".`);
@@ -35,7 +36,8 @@ async function serveVerb(argv: string[]): Promise<void> {
     port: number('port', values.port!, 0),
     maxUpload: number('max-upload', values['max-upload']!, 1) * 1024 * 1024,
     timeout: number('timeout', values.timeout!, 1) * 1000,
-    restartAfter: number('restart-after', values['restart-after']!, 1)
+    restartAfter: number('restart-after', values['restart-after']!, 1),
+    sandbox: !values['no-sandbox']
   });
   const stop = () => { void server.close().then(() => process.exit(0)); };
   process.on('SIGINT', stop);
@@ -53,7 +55,8 @@ async function main(argv: string[]): Promise<number> {
     flag: { type: 'string', multiple: true },
     printer: { type: 'string' },
     check: { type: 'boolean' },
-    trace: { type: 'string' }
+    trace: { type: 'string' },
+    'no-sandbox': { type: 'boolean' }
   } });
   const [verb, input, ...rest] = positionals;
   if (values.help || !verb) {
@@ -69,7 +72,7 @@ async function main(argv: string[]): Promise<number> {
   if (values.check) given.beltype['check'] = true;
   const output = values.output ?? input.replace(/\.html?$/i, '') + '.pdf';
   const created = createdFromEnv();
-  const result = await print(input, output, { given, ...(values.trace !== undefined ? { trace: values.trace } : {}), ...(created ? { created } : {}) });
+  const result = await print(input, output, { given, sandbox: !values['no-sandbox'], ...(values.trace !== undefined ? { trace: values.trace } : {}), ...(created ? { created } : {}) });
   console.log(`${result.output}: ${result.pages} pages, ${result.words} words, ${(result.ms / 1000).toFixed(1)} s`);
   if (result.check) for (const line of checkLines(result.check)) console.log(line);
   return 0;

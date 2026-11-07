@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **`beltype serve` answers only its own name and no other origin.** A request whose `Host` is not the address it is bound to, or that carries an `Origin` of another page, is refused with `403` before its body is read: a form needs no preflight, so any page open in your browser could otherwise post a document to a running server. Bound to `0.0.0.0` or `::`, the server cannot know the name it is reached by, and holds the `Origin` alone.
+- **An `on…=` attribute with no space before it no longer takes the kept page.** `<svg/onload=…>`, `<img src=x"onerror=…>` and `<svg><set/onbegin=…>` now send a document to a page of its own, and a template that holds one is refused.
+- **Chromium runs in its sandbox.** `beltype print` and `beltype serve` launch with the sandbox; `--no-sandbox` launches without it, for a container that runs as root, where Chromium will not start in it.
+- **A print that times out leaves nothing behind.** Its page is closed and its folder removed before the `504`, and what it asked for afterwards never lands in the next print's refusal: each print keeps its own list of what it could not be given.
+
 - **A release is published by hand.** `scripts/release.sh` installs, tests and publishes from a clean checkout of HEAD, then tags and pushes, signed in to npm with Egildo's security key. `.github/workflows/release.yml` is gone, and with it the token and the provenance attestation; the record is *a release moves three remotes at once*, amended 2026-11-07.
 
 - **`beltype serve` takes a mail merge as data** (codeberg.org/BelType/cli issue 2). `POST /templates` takes the template once, and `POST /templates/<id>/print` takes one customer's values and rows as JSON. The tab merges with `prosemirror-stores`, bundled in `assets/merge/` so an install fetches nothing from git, and replaces only the top-level boxes that changed, on the same page. On the `bolletta` each PDF is byte for byte the one `/print` makes of the same merged document, in any order of customers; on the `provvedimento-imu` each copy matches its article in `batch.html` pixel for pixel. A JSON-LD block with a plain `id` no longer sends a document off the kept road.
