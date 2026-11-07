@@ -54,6 +54,7 @@ for (const writer of ['pdf-lib', 'forme']) {
     assert.equal(res.status, 200, await res.clone().text());
     assert.equal(res.headers.get('content-type'), 'application/pdf');
     assert.ok(Number(res.headers.get('x-beltype-pages')) >= 3);
+    assert.equal(res.headers.get('x-beltype-standard'), 'pdf-2.0; pdf-ua-2');
     const served = Buffer.from(await res.arrayBuffer());
     const output = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'beltype-serve-test-')), 'paper.pdf');
     await print(SAMPLE, output, { given: { caster: { writer } }, created: CREATED });
@@ -63,6 +64,12 @@ for (const writer of ['pdf-lib', 'forme']) {
     assert.equal((await health()).prints, before + 1);
   });
 }
+
+test('a print under caster.standard=none says it claims PDF 2.0 alone', async () => {
+  const res = await fetch(`${server.url}/print`, { method: 'POST', body: paperForm({ 'caster.standard': 'none' }) });
+  assert.equal(res.status, 200, await res.clone().text());
+  assert.equal(res.headers.get('x-beltype-standard'), 'pdf-2.0');
+});
 
 test('a document asking for a file it was not given is refused with 422, naming the file', async () => {
   const res = await fetch(`${server.url}/print`, { method: 'POST', body: paperForm({}, 'paper.css') });
