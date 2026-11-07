@@ -24,6 +24,9 @@ export const VIEWPORT = { width: 1200, height: 1600 };
 /** Deterministic text and timers that run while nobody watches the page. */
 export const ARGS = ['--font-render-hinting=none', '--force-device-scale-factor=1', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'];
 
+/** Where a route writes what it could not answer: a print's own set, or a server's sink that hands it to the print running now. */
+export type Missing = { add(entry: string): unknown };
+
 /** Where each `/_beltype/` prefix is answered from: one file, or a folder. */
 export type Assets = { files: Record<string, string>; dirs: Record<string, string> };
 
@@ -64,7 +67,7 @@ export function spliceHead(html: string, fragment: string): string {
 
 // ponytail: routes only. A dedicated or shared worker's WebSocket and fetches pass no route, so a document that opens one is not refused; the monorepo's `cast` closes that with a proxy the run owns (packages/cli/src/cast.js), to be brought over when a document needs it.
 /** What no document owns, on the context: refuse a WebSocket or another origin by name, and answer `/_beltype/` from the companions. */
-export async function routeCompanions(context: BrowserContext, missing: Set<string>, assets: Assets = documentAssets()): Promise<void> {
+export async function routeCompanions(context: BrowserContext, missing: Missing, assets: Assets = documentAssets()): Promise<void> {
   await context.routeWebSocket(/.*/, (ws) => {
     missing.add(`${ws.url()} (a WebSocket; print opens none)`);
     return ws.close({ code: 1008, reason: 'beltype print reaches no network' });
@@ -85,7 +88,7 @@ export async function routeCompanions(context: BrowserContext, missing: Set<stri
 }
 
 /** The document's own files on a page: the document at `docPath`, its folder `root` at the root. Another origin and `/_beltype/` fall back to the context's routes. */
-export async function routeDocument(page: Page, missing: Set<string>, o: { root: string; docPath: string; served: string }): Promise<void> {
+export async function routeDocument(page: Page, missing: Missing, o: { root: string; docPath: string; served: string }): Promise<void> {
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url());
     if (url.origin !== ORIGIN) return route.fallback();
@@ -157,7 +160,7 @@ export function refusal(missing: Set<string>, answer: Refusal | null): BuildErro
 }
 
 /** The percent-decoded path of `url`, or null (and the name of what it asked) where the escape is malformed. */
-function decoded(url: URL, missing: Set<string>): string | null {
+function decoded(url: URL, missing: Missing): string | null {
   try {
     return decodeURIComponent(url.pathname);
   } catch {

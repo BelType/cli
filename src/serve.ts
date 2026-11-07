@@ -27,8 +27,8 @@ import { ARGS, ORIGIN, VIEWPORT, documentAssets, servedHtml, routeCompanions, ro
 import { keepMergeInPage, reseatInPage, seatMergeInPage, type Refusal } from './in-page.ts';
 import type { MergeData } from './merge-tab.ts';
 
-/** `maxUpload` is in bytes and `timeout` in milliseconds here; the command line speaks megabytes and seconds. `onBrowser` is told each browser as it starts, for tests. */
-export type ServeOptions = { host: string; port: number; maxUpload: number; timeout: number; restartAfter: number; log?: (line: string) => void; onBrowser?: (browser: Browser) => void };
+/** `maxUpload` is in bytes and `timeout` in milliseconds here; the command line speaks megabytes and seconds. `sandbox` false launches Chromium without its sandbox, for a container that runs as root. `onBrowser` is told each browser as it starts, for tests. */
+export type ServeOptions = { host: string; port: number; maxUpload: number; timeout: number; restartAfter: number; sandbox?: boolean; log?: (line: string) => void; onBrowser?: (browser: Browser) => void };
 
 const HOLDER_PATH = '/_beltype/holder.html';
 const HOLDER = `<!doctype html><html><head><meta charset="utf-8"><title>holder</title></head><body><script type="module">
@@ -54,6 +54,9 @@ const TEMPLATES_KEPT = 16;
 
 const DOC_PATH = '/index.html';
 
+/** The binds that listen on every address, under which a request's `Host` cannot be checked against one name. */
+const WILDCARD = new Set(['0.0.0.0', '::', '[::]']);
+
 const lapper = (steps: Record<string, number>) => {
   const began: Record<string, number> = {};
   return { start: (name: string) => { began[name] = performance.now(); }, end: (name: string) => { steps[name] = performance.now() - (began[name] ?? performance.now()); } };
@@ -65,7 +68,7 @@ const stepsLine = ({ road, ms: steps }: Trace, printed: Printed) => `road ${road
 const DATA_BLOCK = /<script\s+type\s*=\s*(["']?)application\/ld\+json\1(?:\s+id\s*=\s*(["']?)[\w-]+\2)?\s*>[\s\S]*?<\/script/gi;
 
 /** Whether a document may share the kept page: only one with no script of its own (the `Window` outlives `document.open()`, and so does a timer, a listener or a global a script left on it). A JSON-LD data block is data, not script, and does not count. The test is conservative; a false alarm costs only speed. */
-export const keptRoad = (html: string) => !/<script|<iframe|<object|<embed|<frame|<portal|javascript:|\son[a-z]+\s*=/i.test(html.replace(DATA_BLOCK, ''));
+export const keptRoad = (html: string) => !/<script|<iframe|<object|<embed|<frame|<portal|javascript:|\bon[a-z]+\s*=/i.test(html.replace(DATA_BLOCK, ''));
 
 class HttpError extends Error {
   status: number;
@@ -75,7 +78,12 @@ class HttpError extends Error {
 export async function serve(options: ServeOptions): Promise<{ url: string; close(): Promise<void> }> {
   const log = options.log ?? ((line: string) => console.log(line));
   const assets: Assets = documentAssets();
-  const missing = new Set<string>();
+  /** What the print running now could not answer; null between prints, so a page left over from one never writes into the next. */
+  let active: Set<string> | null = null;
+  /** The routes' one sink, context's and pages' alike: a kept page's routes outlive the print that set them. */
+  const missing = { add: (entry: string) => active?.add(entry) };
+  /** The page the print running now uses, which a timeout closes. */
+  let current: Page | null = null;
   let kept: Page | null = null;
   /** The template whose merge the kept page shows, or null when it shows anything else. */
   let seated: string | null = null;
@@ -116,6 +124,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
   /** Run `html` and `files` through the print's road: re-seated on the kept page where the document carries no script of its own, else on a new page. The folder is gone after. */
   const render = async (files: Map<string, Uint8Array>, given: Given, created: string | undefined, trace: Trace = { road: 'fresh', ms: {} }): Promise<Printed> => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'beltype-serve-'));
+    const mine = new Set<string>();
     try {
       for (const [name, bytes] of files) {
         const file = path.join(root, ...name.split('/'));
@@ -127,10 +136,10 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       const served = servedHtml(author);
       const keep = keptRoad(author);
       trace.road = keep ? 'kept' : 'fresh';
-      missing.clear();
       const lapped = lapper(trace.ms);
       lapped.start('page');
-      const page = keep ? (kept ?? await openKept()) : await context!.newPage();
+      const page = current = keep ? (kept ?? await openKept()) : await context!.newPage();
+      active = mine;
       try {
         if (keep) {
           seated = null;
@@ -139,9 +148,9 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
         await routeDocument(page, missing, { root, docPath: DOC_PATH, served });
         lapped.end('page');
         const reseat = keep ? served.replace(/(<script type="module" src="[^"?]+)"/g, `$1?kept=${++reseats}"`) : undefined;
-        const printed = await printOnPage(page, missing, flags, { docPath: DOC_PATH, sharedWriter: true, progress: { step: lapped.start, lap: lapped.end }, ...(reseat !== undefined ? { reseat } : {}), ...(created !== undefined ? { created } : {}) });
+        const printed = await printOnPage(page, mine, flags, { docPath: DOC_PATH, sharedWriter: true, progress: { step: lapped.start, lap: lapped.end }, ...(reseat !== undefined ? { reseat } : {}), ...(created !== undefined ? { created } : {}) });
         lapped.end('print');
-        if (missing.size) throw refusal(missing, null);
+        if (mine.size) throw refusal(mine, null);
         if (!keep) { lapped.start('close'); await closePage(page); lapped.end('close'); }
         return printed;
       } catch (error) {
@@ -149,6 +158,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
         throw error;
       }
     } finally {
+      if (active === mine) active = null;
       fs.rmSync(root, { recursive: true, force: true });
     }
   };
@@ -156,13 +166,14 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
   /** One customer of `template` on the kept page: the changed boxes replaced where the template is seated, else the template seated and merged. */
   const renderMerge = async (template: Template, data: MergeData, created: string | undefined, trace: Trace): Promise<Printed> => {
     const flags = { caster: template.given.caster, cicero: ciceroFlags.resolve(template.given.cicero as never), beltype: cliFlags.resolve(template.given.beltype as never) };
-    missing.clear();
+    const mine = new Set<string>();
     const lapped = lapper(trace.ms);
     lapped.start('page');
-    const page = kept ?? await openKept();
+    const page = current = kept ?? await openKept();
+    active = mine;
     lapped.end('page');
     const merged = <T extends object>(answer: T | Refusal): T => {
-      if ('refused' in answer) throw refusal(missing, answer);
+      if ('refused' in answer) throw refusal(mine, answer);
       return answer;
     };
     try {
@@ -191,18 +202,20 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
         trace.road = 'merge seated';
       }
       lapped.end('merge');
-      const printed = await cutAndPrint(page, missing, flags, { sharedWriter: true, resumeAt, progress: { step: lapped.start, lap: lapped.end }, ...(created !== undefined ? { created } : {}) });
+      const printed = await cutAndPrint(page, mine, flags, { sharedWriter: true, resumeAt, progress: { step: lapped.start, lap: lapped.end }, ...(created !== undefined ? { created } : {}) });
       lapped.end('print');
-      if (missing.size) throw refusal(missing, null);
+      if (mine.size) throw refusal(mine, null);
       return printed;
     } catch (error) {
       await closePage(page);
       throw error;
+    } finally {
+      if (active === mine) active = null;
     }
   };
 
   const start = async () => {
-    browser = await chromium.launch({ headless: true, args: ARGS });
+    browser = await chromium.launch({ headless: true, args: ARGS, chromiumSandbox: options.sandbox ?? true });
     const mine = browser;
     version = mine.version();
     mine.on('disconnected', () => { if (browser === mine) needsRestart = true; });
@@ -294,7 +307,12 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
         prints++;
         sinceStart++;
         running.catch(() => {});
-        if (error instanceof HttpError && kept) await closePage(kept);
+        if (error instanceof HttpError) {
+          // The page the print still runs on is closed, so it asks for nothing more, and the print is let end, so its folder goes before the answer.
+          if (current) await closePage(current);
+          if (kept) await closePage(kept);
+          await running.catch(() => {});
+        }
         if (!(error instanceof BuildError) && !(error instanceof HttpError)) needsRestart = true;
         throw error;
       } finally {
@@ -341,6 +359,21 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
     return inTurn(String(template.given.caster['writer'] ?? 'pdf-lib'), (trace) => renderMerge(template, data, created ?? createdFromEnv(), trace));
   };
 
+  /** The `Host` a request must name; set once the server listens. */
+  let authority = '';
+  /**
+   * Whether a request does not name this server, or comes from a page of another origin: a page in the user's browser can POST a form here with no preflight, and a rebound name reaches it under its own `Host`.
+   *
+   * @remarks
+   * Under a wildcard bind (`0.0.0.0`, `::`) the server cannot know which name it is reached by, so only the `Origin` is held, against the `Host` the request names.
+   */
+  const foreign = (req: http.IncomingMessage) => {
+    const host = (req.headers.host ?? '').toLowerCase();
+    if (!WILDCARD.has(options.host) && host !== authority) return true;
+    const origin = req.headers.origin;
+    return origin !== undefined && origin !== '' && origin.toLowerCase() !== `http://${host}`;
+  };
+
   const server = http.createServer(async (req, res) => {
     const send = (status: number, type: string, body: string | Buffer, headers: Record<string, string | number> = {}) => {
       res.writeHead(status, { 'content-type': type, ...headers });
@@ -348,6 +381,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
     };
     const text = (status: number, message: string) => send(status, 'text/plain; charset=utf-8', message + '\n');
     try {
+      if (foreign(req)) throw new HttpError(403, `beltype serve: refused a request for ${req.headers.host ?? 'no host'} from ${req.headers.origin ?? 'no origin'}; it answers ${authority} and no page of another origin.`);
       const pathname = new URL(req.url ?? '/', 'http://x').pathname;
       if (pathname === '/health') {
         if (req.method !== 'GET') return text(405, 'beltype serve: /health takes GET.');
@@ -368,9 +402,9 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       const message = error instanceof Error ? error.message : String(error);
       const status = error instanceof HttpError ? error.status : error instanceof BuildError ? 422 : error instanceof ValidationError || error instanceof FlagError ? 400 : 500;
       log(`beltype serve: ${req.method} ${req.url}: ${status}`);
-      if (status === 413) {
-        // Keep nothing more: answer, discard what still arrives (a client cut off mid-write sees EPIPE, not the 413), and drop the connection after a second if the client is still sending.
-        res.writeHead(413, { 'content-type': 'text/plain; charset=utf-8' });
+      if (status === 413 || status === 403) {
+        // Keep nothing more: answer, discard what still arrives (a client cut off mid-write sees EPIPE, not the answer), and drop the connection after a second if the client is still sending.
+        res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8' });
         res.end(message + '\n', () => {
           req.resume();
           setTimeout(() => req.destroy(), 1000).unref();
@@ -380,7 +414,8 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
   });
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(options.port, options.host, resolve); });
   const address = server.address() as { port: number };
-  const url = `http://${options.host}:${address.port}`;
+  authority = `${options.host.includes(':') ? `[${options.host}]` : options.host}:${address.port}`.toLowerCase();
+  const url = `http://${authority}`;
   log(`beltype serve: listening on ${url}`);
   return {
     url,
