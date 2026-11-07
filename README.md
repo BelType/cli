@@ -64,7 +64,7 @@ Found while writing the sample, and left out of it until the companions print th
 
 - `counter(pages)` in a margin box: Caster refuses the content.
 - SVG text under `transform="rotate(…)"`: Caster draws it broken.
-- `content()` in `string-set` includes the heading's `::before` under Cicero, so the sample's running section reads "3. Results" from `content()` alone.
+- `content()` in `string-set` includes the heading's `::before`, so the sample's running section reads "3. Results" from `content()` alone. This is Caster's, not Cicero's: Caster's preparation turns the heading's `::before` into a real span before Cicero cuts, and `content()` then reads it.
 
 ## Requirements
 
