@@ -27,8 +27,8 @@ import { ARGS, ORIGIN, VIEWPORT, documentAssets, servedHtml, routeCompanions, ro
 import { keepMergeInPage, reseatInPage, seatMergeInPage, type Conformance, type Refusal } from './in-page.ts';
 import type { MergeData } from './merge-tab.ts';
 
-/** `maxUpload` is in bytes and `timeout` in milliseconds here; the command line speaks megabytes and seconds. `sandbox` false launches Chromium without its sandbox, for a container that runs as root. `onBrowser` is told each browser as it starts, for tests. */
-export type ServeOptions = { host: string; port: number; maxUpload: number; timeout: number; restartAfter: number; sandbox?: boolean; log?: (line: string) => void; onBrowser?: (browser: Browser) => void };
+/** `maxUpload` is in bytes and `timeout` in milliseconds here; the command line speaks megabytes and seconds. `sandbox` false launches Chromium without its sandbox, for a container that runs as root. `allowedHosts` are the `Host` values answered besides the bound address, each `name` (any port) or `name:port`; a wildcard bind answers them alone and will not start without one. `onBrowser` is told each browser as it starts, for tests. */
+export type ServeOptions = { host: string; port: number; maxUpload: number; timeout: number; restartAfter: number; sandbox?: boolean; allowedHosts?: string[]; log?: (line: string) => void; onBrowser?: (browser: Browser) => void };
 
 const HOLDER_PATH = '/_beltype/holder.html';
 const HOLDER = `<!doctype html><html><head><meta charset="utf-8"><title>holder</title></head><body><script type="module">
@@ -77,6 +77,9 @@ class HttpError extends Error {
 
 export async function serve(options: ServeOptions): Promise<{ url: string; close(): Promise<void> }> {
   const log = options.log ?? ((line: string) => console.log(line));
+  const wildcard = WILDCARD.has(options.host);
+  const allowed = new Set((options.allowedHosts ?? []).map((h) => h.toLowerCase()));
+  if (wildcard && !allowed.size) throw new ValidationError(`beltype serve: --host ${options.host} listens on every address, so the server cannot tell its own name from a rebound one; name the hosts it answers with --allowed-hosts <name[:port],…>.`);
   const assets: Assets = documentAssets();
   /** What the print running now could not answer; null between prints, so a page left over from one never writes into the next. */
   let active: Set<string> | null = null;
@@ -365,11 +368,12 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
    * Whether a request does not name this server, or comes from a page of another origin: a page in the user's browser can POST a form here with no preflight, and a rebound name reaches it under its own `Host`.
    *
    * @remarks
-   * Under a wildcard bind (`0.0.0.0`, `::`) the server cannot know which name it is reached by, so only the `Origin` is held, against the `Host` the request names.
+   * Under a wildcard bind (`0.0.0.0`, `::`) the server cannot know which name it is reached by, so the `Host` must be on `allowedHosts`, which `serve` demands there. An entry with no port names the host on any port.
    */
   const foreign = (req: http.IncomingMessage) => {
     const host = (req.headers.host ?? '').toLowerCase();
-    if (!WILDCARD.has(options.host) && host !== authority) return true;
+    const named = (!wildcard && host === authority) || allowed.has(host) || allowed.has(host.replace(/:\d+$/, ''));
+    if (!named) return true;
     const origin = req.headers.origin;
     return origin !== undefined && origin !== '' && origin.toLowerCase() !== `http://${host}`;
   };
@@ -381,7 +385,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
     };
     const text = (status: number, message: string) => send(status, 'text/plain; charset=utf-8', message + '\n');
     try {
-      if (foreign(req)) throw new HttpError(403, `beltype serve: refused a request for ${req.headers.host ?? 'no host'} from ${req.headers.origin ?? 'no origin'}; it answers ${authority} and no page of another origin.`);
+      if (foreign(req)) throw new HttpError(403, `beltype serve: refused a request for ${req.headers.host ?? 'no host'} from ${req.headers.origin ?? 'no origin'}; it answers ${[...(wildcard ? [] : [authority]), ...allowed].join(', ')} and no page of another origin.`);
       const pathname = new URL(req.url ?? '/', 'http://x').pathname;
       if (pathname === '/health') {
         if (req.method !== 'GET') return text(405, 'beltype serve: /health takes GET.');
