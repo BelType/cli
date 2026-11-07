@@ -6,11 +6,14 @@
  *
  * **One kept print page, for a document with no script of its own.** A print re-seats the kept page as Caster's kept frame does (`document.open()` keeps the `Window`, so the realm, Caster's registry and the companions' modules stay warm; *the printer runs in the realm it prints*, Caster's DESIGN.md S20, S87, S89): its routes are swapped for the print's folder, the served document is written in, and each module script the document names gets a query of its own. That page is shared only by a document whose text, its JSON-LD data blocks aside, holds none of `<script`, `<iframe`, `<object`, `<embed`, `<frame`, `<portal`, `javascript:` or an `on…=` attribute ({@link keptRoad}); any other gets a new page, and the log line names the road. A print that fails or times out closes the kept page, and the next opens a new one.
  *
+ * **A mail merge, on the same page.** `POST /templates` takes a template's folder once, and `POST /templates/<id>/print` takes one customer's values and rows as JSON. The first customer seats the template and merges in the tab; each later one replaces only the top-level boxes that changed and resumes the cut (`merge-tab.ts`), which keeps the sheets, the faces and the rewrite, and leaves nothing of the customer before. Where the shape of the body changed, or Cicero will not promise the patch, the template is seated again and the log line says why. Measured 2026-11-07 on the bolletta: the PDF byte for byte the folder route's, and 30 to 50 ms less on a 61-day bill (codeberg.org/BelType/cli issue 2).
+ *
  * **One at a time, and kept alive.** A promise chain runs the prints in turn. The browser is closed and started again (routes, holder page, warm-up) after `restartAfter` prints and after a print that failed with a 500, and a disconnected browser is started again before the next print. The warm-up prints a built-in document twice under forme, so the first request is warm too.
  *
  * @packageDocumentation
  */
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -20,7 +23,9 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { ciceroFlags } from '@beltype/cicero/flags';
 import { BuildError, ValidationError, FlagError } from '@beltype/common/errors';
 import { cliFlags, createdFromEnv, parseFlagArgs, type Given } from './flags.ts';
-import { ARGS, ORIGIN, VIEWPORT, documentAssets, servedHtml, routeCompanions, routeDocument, printOnPage, refusal, deferralLine, type Assets, type Printed } from './run.ts';
+import { ARGS, ORIGIN, VIEWPORT, documentAssets, servedHtml, routeCompanions, routeDocument, printOnPage, cutAndPrint, refusal, deferralLine, type Assets, type Printed } from './run.ts';
+import { keepMergeInPage, reseatInPage, seatMergeInPage, type Refusal } from './in-page.ts';
+import type { MergeData } from './merge-tab.ts';
 
 /** `maxUpload` is in bytes and `timeout` in milliseconds here; the command line speaks megabytes and seconds. `onBrowser` is told each browser as it starts, for tests. */
 export type ServeOptions = { host: string; port: number; maxUpload: number; timeout: number; restartAfter: number; log?: (line: string) => void; onBrowser?: (browser: Browser) => void };
@@ -39,7 +44,13 @@ const paragraph = (n: number) => Array.from({ length: 90 }, (_, i) => WORDS[(i *
 export const WARMUP = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Warm-up</title><style>@font-face { font-family: Warm; src: url(warm.woff2) format("woff2"); font-weight: 200 900 } @page { size: A4; margin: 20mm } body { font: 11pt/1.4 Warm }</style></head><body><h1>Warm-up</h1>${Array.from({ length: 16 }, (_, n) => `<p>${paragraph(n)}</p>`).join('')}</body></html>`;
 
 /** One print's road and the milliseconds of each step, by name. */
-type Trace = { road: 'kept' | 'fresh'; ms: Record<string, number> };
+type Trace = { road: 'kept' | 'fresh' | 'merge seated' | 'merge kept'; ms: Record<string, number> };
+
+/** A template uploaded once: its folder on disk and the run's values. */
+type Template = { id: string; root: string; author: string; given: Given };
+
+/** ponytail: the oldest template is dropped past this, and its id answers 404; a named delete when a host needs to hold more. */
+const TEMPLATES_KEPT = 16;
 
 const DOC_PATH = '/index.html';
 
@@ -48,10 +59,10 @@ const lapper = (steps: Record<string, number>) => {
   return { start: (name: string) => { began[name] = performance.now(); }, end: (name: string) => { steps[name] = performance.now() - (began[name] ?? performance.now()); } };
 };
 
-const stepsLine = ({ road, ms: steps }: Trace, printed: Printed) => `road ${road}; ${['page', 'load', 'cut', 'print', 'close'].map((n) => `${n} ${Math.round(steps[n] ?? 0)}`).join(', ')}; caster ${Object.entries(printed.caster?.ms ?? {}).map(([k, v]) => `${k} ${Math.round(Number(v))}`).join(', ')}`;
+const stepsLine = ({ road, ms: steps }: Trace, printed: Printed) => `road ${road}; ${['page', 'load', 'merge', 'cut', 'print', 'close'].map((n) => `${n} ${Math.round(steps[n] ?? 0)}`).join(', ')}; caster ${Object.entries(printed.caster?.ms ?? {}).map(([k, v]) => `${k} ${Math.round(Number(v))}`).join(', ')}`;
 
-/** A JSON-LD data block, which the browser never runs: an opening tag with that one attribute, to the first `</script` (the tokenizer ends the element there or later, never sooner, so what is cut is always inside the block). */
-const DATA_BLOCK = /<script\s+type\s*=\s*(["']?)application\/ld\+json\1\s*>[\s\S]*?<\/script/gi;
+/** A JSON-LD data block, which the browser never runs: an opening tag with that attribute and at most a plain `id`, as a store host saves it, to the first `</script` (the tokenizer ends the element there or later, never sooner, so what is cut is always inside the block). */
+const DATA_BLOCK = /<script\s+type\s*=\s*(["']?)application\/ld\+json\1(?:\s+id\s*=\s*(["']?)[\w-]+\2)?\s*>[\s\S]*?<\/script/gi;
 
 /** Whether a document may share the kept page: only one with no script of its own (the `Window` outlives `document.open()`, and so does a timer, a listener or a global a script left on it). A JSON-LD data block is data, not script, and does not count. The test is conservative; a false alarm costs only speed. */
 export const keptRoad = (html: string) => !/<script|<iframe|<object|<embed|<frame|<portal|javascript:|\son[a-z]+\s*=/i.test(html.replace(DATA_BLOCK, ''));
@@ -66,6 +77,9 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
   const assets: Assets = documentAssets();
   const missing = new Set<string>();
   let kept: Page | null = null;
+  /** The template whose merge the kept page shows, or null when it shows anything else. */
+  let seated: string | null = null;
+  const templates = new Map<string, Template>();
   let reseats = 0;
   let browser: Browser | null = null;
   let context: BrowserContext | null = null;
@@ -79,7 +93,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
 
   const stopBrowser = async () => {
     const old = browser;
-    browser = context = kept = null;
+    browser = context = kept = seated = null;
     await old?.close().catch(() => {});
   };
 
@@ -89,12 +103,13 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
     page.on('pageerror', (error) => console.warn(`page error: ${error.message}`));
     await routeDocument(page, missing, { root: path.join(os.tmpdir(), 'beltype-serve-none'), docPath: DOC_PATH, served: servedHtml('<!doctype html><html><head></head><body></body></html>') });
     await page.goto(ORIGIN + DOC_PATH, { waitUntil: 'load' });
+    seated = null;
     return kept = page;
   };
 
   /** Closes `page`, and forgets it if it is the kept one: a page a failed or timed-out print used is never reused. */
   const closePage = async (page: Page) => {
-    if (kept === page) kept = null;
+    if (kept === page) kept = seated = null;
     await page.close().catch(() => {});
   };
 
@@ -117,7 +132,10 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       lapped.start('page');
       const page = keep ? (kept ?? await openKept()) : await context!.newPage();
       try {
-        if (keep) await page.unrouteAll({ behavior: 'wait' });
+        if (keep) {
+          seated = null;
+          await page.unrouteAll({ behavior: 'wait' });
+        }
         await routeDocument(page, missing, { root, docPath: DOC_PATH, served });
         lapped.end('page');
         const reseat = keep ? served.replace(/(<script type="module" src="[^"?]+)"/g, `$1?kept=${++reseats}"`) : undefined;
@@ -132,6 +150,54 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       }
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
+    }
+  };
+
+  /** One customer of `template` on the kept page: the changed boxes replaced where the template is seated, else the template seated and merged. */
+  const renderMerge = async (template: Template, data: MergeData, created: string | undefined, trace: Trace): Promise<Printed> => {
+    const flags = { caster: template.given.caster, cicero: ciceroFlags.resolve(template.given.cicero as never), beltype: cliFlags.resolve(template.given.beltype as never) };
+    missing.clear();
+    const lapped = lapper(trace.ms);
+    lapped.start('page');
+    const page = kept ?? await openKept();
+    lapped.end('page');
+    const merged = <T extends object>(answer: T | Refusal): T => {
+      if ('refused' in answer) throw refusal(missing, answer);
+      return answer;
+    };
+    try {
+      let resumeAt: unknown = null;
+      lapped.start('merge');
+      if (seated === template.id) {
+        const answer = merged(await page.evaluate(keepMergeInPage, data));
+        if ('again' in answer) {
+          log(`beltype serve: the template is seated again: ${answer.again}`);
+          seated = null;
+        } else {
+          resumeAt = answer.resumeAt;
+          trace.road = 'merge kept';
+        }
+      }
+      if (seated !== template.id) {
+        lapped.start('load');
+        await page.unrouteAll({ behavior: 'wait' });
+        const served = servedHtml(template.author);
+        await routeDocument(page, missing, { root: template.root, docPath: DOC_PATH, served });
+        await page.evaluate(reseatInPage, served.replace(/(<script type="module" src="[^"?]+)"/g, `$1?kept=${++reseats}"`));
+        lapped.end('load');
+        lapped.start('merge');
+        merged(await page.evaluate(seatMergeInPage, { template: template.author, data }));
+        seated = template.id;
+        trace.road = 'merge seated';
+      }
+      lapped.end('merge');
+      const printed = await cutAndPrint(page, missing, flags, { sharedWriter: true, resumeAt, progress: { step: lapped.start, lap: lapped.end }, ...(created !== undefined ? { created } : {}) });
+      lapped.end('print');
+      if (missing.size) throw refusal(missing, null);
+      return printed;
+    } catch (error) {
+      await closePage(page);
+      throw error;
     }
   };
 
@@ -186,7 +252,8 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
 
   await start();
 
-  const print = async (req: http.IncomingMessage): Promise<{ bytes: Buffer; printed: Printed; writer: string }> => {
+  /** A request's form: the document's files, the flags, and the instant the file says it was made. */
+  const readDocument = async (req: http.IncomingMessage): Promise<{ files: Map<string, Uint8Array>; args: string[]; given: Given; created: string | undefined; writer: string }> => {
     const form = await readForm(req, options.maxUpload);
     const files = new Map<string, Uint8Array>();
     const args: string[] = [];
@@ -204,17 +271,20 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
     if (!files.has('index.html')) throw new ValidationError('beltype serve: the form has no index.html file.');
     const given = await parseFlagArgs(args);
     created ??= createdFromEnv();
-    const writer = String(given.caster['writer'] ?? 'pdf-lib');
-    return enqueue(async () => {
+    return { files, args, given, created, writer: String(given.caster['writer'] ?? 'pdf-lib') };
+  };
+
+  /** A print's turn: logged, held to the timeout, and counted towards a restart. */
+  const inTurn = (writer: string, run: (trace: Trace) => Promise<Printed>): Promise<{ bytes: Buffer; printed: Printed; writer: string }> => enqueue(async () => {
       const id = prints + 1;
       log(`beltype serve: print ${id} started`);
       const t0 = performance.now();
       const trace: Trace = { road: 'fresh', ms: {} };
-      const run = render(files, given, created, trace);
+      const running = run(trace);
       let timer: NodeJS.Timeout | undefined;
       const limit = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new HttpError(504, `beltype serve: the print took over ${options.timeout / 1000} s.`)), options.timeout); });
       try {
-        const printed = await Promise.race([run, limit]);
+        const printed = await Promise.race([running, limit]);
         prints++;
         sinceStart++;
         log(`beltype serve: print ${id}: 200, ${printed.pages} pages, ${writer}, ${Math.round(performance.now() - t0)} ms (write ${printed.caster?.ms['emit'] ?? '?'} ms)`);
@@ -223,7 +293,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       } catch (error) {
         prints++;
         sinceStart++;
-        run.catch(() => {});
+        running.catch(() => {});
         if (error instanceof HttpError && kept) await closePage(kept);
         if (!(error instanceof BuildError) && !(error instanceof HttpError)) needsRestart = true;
         throw error;
@@ -231,6 +301,44 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
         clearTimeout(timer);
       }
     });
+
+  const print = async (req: http.IncomingMessage) => {
+    const { files, given, created, writer } = await readDocument(req);
+    return inTurn(writer, (trace) => render(files, given, created, trace));
+  };
+
+  /** A template's folder, kept on disk under the hash of what it holds, so uploading it again is the same template. */
+  const uploadTemplate = async (req: http.IncomingMessage): Promise<string> => {
+    const { files, args, given } = await readDocument(req);
+    const author = Buffer.from(files.get('index.html')!).toString('utf8');
+    if (!keptRoad(author)) throw new ValidationError('beltype serve: a template holds no script of its own, nor an <iframe>, <object>, <embed>, <frame>, <portal>, javascript: or on…= attribute: the merge runs in one kept page, which they would outlive.');
+    if (author.search(DATA_BLOCK) < 0) throw new ValidationError('beltype serve: a template has a data block, a <script type="application/ld+json">; this one has none.');
+    const hash = crypto.createHash('sha256');
+    for (const name of [...files.keys()].sort()) hash.update(name).update('\0').update(files.get(name)!).update('\0');
+    const id = hash.update(args.sort().join('\0')).digest('hex').slice(0, 32);
+    if (templates.has(id)) return id;
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'beltype-template-'));
+    for (const [name, bytes] of files) {
+      const file = path.join(root, ...name.split('/'));
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, bytes);
+    }
+    templates.set(id, { id, root, author, given });
+    for (const old of templates.values()) {
+      if (templates.size <= TEMPLATES_KEPT) break;
+      if (old.id === seated) continue;
+      templates.delete(old.id);
+      fs.rmSync(old.root, { recursive: true, force: true });
+    }
+    return id;
+  };
+
+  /** One customer of a template: the body is JSON, `{ values, rows, created }`. */
+  const printMerge = async (id: string, req: http.IncomingMessage) => {
+    const template = templates.get(id);
+    if (!template) throw new HttpError(404, `beltype serve: no template ${id}; POST its folder to /templates (the oldest are dropped past ${TEMPLATES_KEPT}, and a restart of the server forgets them all).`);
+    const { data, created } = mergeBody(await readBody(req, options.maxUpload));
+    return inTurn(String(template.given.caster['writer'] ?? 'pdf-lib'), (trace) => renderMerge(template, data, created ?? createdFromEnv(), trace));
   };
 
   const server = http.createServer(async (req, res) => {
@@ -245,9 +353,14 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
         if (req.method !== 'GET') return text(405, 'beltype serve: /health takes GET.');
         return send(restarting ? 503 : 200, 'application/json', JSON.stringify({ status: restarting ? 'restarting' : 'up', chromium: version, prints, queued }));
       }
-      if (pathname !== '/print') return text(404, `beltype serve: no ${pathname}; there is POST /print and GET /health.`);
-      if (req.method !== 'POST') return text(405, 'beltype serve: /print takes POST.');
-      const { bytes, printed, writer } = await print(req);
+      if (pathname === '/templates') {
+        if (req.method !== 'POST') return text(405, 'beltype serve: /templates takes POST.');
+        return send(201, 'application/json', JSON.stringify({ template: await uploadTemplate(req) }));
+      }
+      const merge = /^\/templates\/([0-9a-f]+)\/print$/.exec(pathname);
+      if (pathname !== '/print' && !merge) return text(404, `beltype serve: no ${pathname}; there is POST /print, POST /templates, POST /templates/<id>/print and GET /health.`);
+      if (req.method !== 'POST') return text(405, `beltype serve: ${pathname} takes POST.`);
+      const { bytes, printed, writer } = await (merge ? printMerge(merge[1]!, req) : print(req));
       for (const warning of printed.warnings) log(`beltype serve: warning: ${typeof warning === 'string' ? warning : JSON.stringify(warning)}`);
       for (const deferral of printed.deferred) log(`beltype serve: ${deferralLine(deferral)}`);
       send(200, 'application/pdf', bytes, { 'x-beltype-pages': printed.pages, 'x-beltype-words': printed.words, 'x-beltype-warnings': printed.warnings.length, 'x-beltype-deferred': printed.deferred.length });
@@ -276,12 +389,13 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await tail;
       await stopBrowser();
+      for (const { root } of templates.values()) fs.rmSync(root, { recursive: true, force: true });
     }
   };
 }
 
-/** The request's multipart form, read up to `limit` bytes. @throws {HttpError} 413 as soon as the count passes the limit; {ValidationError} where the body is not a form. */
-async function readForm(req: http.IncomingMessage, limit: number): Promise<FormData> {
+/** The request's body, read up to `limit` bytes. @throws {HttpError} 413 as soon as the count passes the limit. */
+async function readBody(req: http.IncomingMessage, limit: number): Promise<Buffer<ArrayBuffer>> {
   const declared = Number(req.headers['content-length'] ?? 0);
   if (declared > limit) throw new HttpError(413, `beltype serve: the upload is ${declared} bytes, over the limit of ${limit}.`);
   const chunks: Buffer[] = [];
@@ -291,10 +405,33 @@ async function readForm(req: http.IncomingMessage, limit: number): Promise<FormD
     if (size > limit) throw new HttpError(413, `beltype serve: the upload is over the limit of ${limit} bytes.`);
     chunks.push(chunk);
   }
+  return Buffer.concat(chunks);
+}
+
+/** One customer's JSON: `values` a flat object of strings, numbers and booleans, `rows` a table of arrays of flat objects, `created` an instant. @throws {ValidationError} */
+function mergeBody(body: Buffer): { data: MergeData; created: string | undefined } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body.toString('utf8'));
+  } catch {
+    throw new ValidationError('beltype serve: the customer is JSON: { "values": { … }, "rows": { "<table>": [ { … } ] } }; the body does not parse.');
+  }
+  const isObject = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
+  if (!isObject(parsed)) throw new ValidationError('beltype serve: the customer is a JSON object with "values" and "rows".');
+  const { values = {}, rows = {}, created } = parsed;
+  if (!isObject(values) || Object.values(values).some((v) => !['string', 'number', 'boolean'].includes(typeof v))) throw new ValidationError('beltype serve: "values" is an object of strings, numbers and booleans.');
+  if (!isObject(rows) || Object.values(rows).some((table) => !Array.isArray(table) || table.some((row) => !isObject(row)))) throw new ValidationError('beltype serve: "rows" is an object of tables, each an array of objects.');
+  if (created !== undefined && typeof created !== 'string') throw new ValidationError('beltype serve: "created" is an ISO 8601 instant.');
+  return { data: { values, rows } as MergeData, created: created === undefined ? undefined : instant(created) };
+}
+
+/** The request's multipart form, read up to `limit` bytes. @throws {HttpError} 413 as soon as the count passes the limit; {ValidationError} where the body is not a form. */
+async function readForm(req: http.IncomingMessage, limit: number): Promise<FormData> {
+  const body = await readBody(req, limit);
   const type = req.headers['content-type'] ?? '';
   if (!/^multipart\/form-data/i.test(type)) throw new ValidationError('beltype serve: POST /print takes multipart/form-data.');
   try {
-    return await new Response(Buffer.concat(chunks), { headers: { 'content-type': type } }).formData();
+    return await new Response(body, { headers: { 'content-type': type } }).formData();
   } catch {
     throw new ValidationError('beltype serve: the body is not a well-formed multipart/form-data.');
   }

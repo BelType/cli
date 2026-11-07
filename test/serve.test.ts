@@ -194,6 +194,7 @@ test('keptRoad: a document with a script of its own, or any way to run one, is r
   // A JSON-LD data block never runs, so it does not count; only the opening tag with that one attribute, and only up to the first </script, is let through.
   assert.equal(keptRoad('<script type="application/ld+json">{"@graph":[]}</script><p>x</p>'), true);
   assert.equal(keptRoad("<SCRIPT TYPE='application/LD+JSON'>{}</script >"), true);
+  assert.equal(keptRoad('<script type="application/ld+json" id="__beltype-store">{}</script><p>x</p>'), true);
   for (const bad of ['<script type="application/ld+json" onload="1">{}</script>', '<script type="application/ld+json">{}</script x><script>1</script>', '<script type="application/ld+json">{}</script><script>1</script>', '<script type="module">1</script>', '<script type="application/ld+json" src="x.js"></script>']) assert.equal(keptRoad(bad), false, bad);
 });
 

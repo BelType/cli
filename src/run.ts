@@ -31,7 +31,7 @@ export type Assets = { files: Record<string, string>; dirs: Record<string, strin
 export type RunFlags = { caster: Record<string, unknown>; cicero: Record<string, unknown>; beltype: { printer: string; check: boolean } };
 
 /** What {@link printOnPage} asks beyond the flags. `reseat` is the served document to write into the page's existing document in place of a navigation, for a page kept between prints. `progress` is told each step as it starts and each lap as it ends, for a trace. */
-export type RunOptions = { created?: string; reseat?: string; sharedWriter?: boolean; measures?: boolean; progress?: { step(name: string): void; lap(key: string): void; cicero?(measures: Measure[]): void } };
+export type RunOptions = { created?: string; reseat?: string; sharedWriter?: boolean; measures?: boolean; resumeAt?: unknown; progress?: { step(name: string): void; lap(key: string): void; cicero?(measures: Measure[]): void } };
 
 export type Printed = { bytes: Buffer; pages: number; words: number; warnings: unknown[]; deferred: Deferral[]; caster: CasterTrace | null; cicero: Measure[]; screens: Uint8Array[]; printMs?: number };
 
@@ -39,7 +39,9 @@ export type Printed = { bytes: Buffer; pages: number; words: number; warnings: u
 export function documentAssets(): Assets {
   const distOf = (specifier: string, up: number) => path.resolve(path.dirname(fileURLToPath(import.meta.resolve(specifier))), ...Array<string>(up).fill('..'));
   const cicero = ciceroEngine.vendorAssets();
-  return { files: cicero.files, dirs: { ...cicero.dirs, caster: distOf('@beltype/caster', 1), common: distOf('@beltype/common/errors', 0) } };
+  // Run from src/ or from dist/src/: the package root is the first folder up that holds `assets`.
+  const merge = [1, 2].map((up) => fileURLToPath(new URL(`${'../'.repeat(up)}assets/merge`, import.meta.url))).find((dir) => fs.existsSync(dir))!;
+  return { files: cicero.files, dirs: { ...cicero.dirs, caster: distOf('@beltype/caster', 1), common: distOf('@beltype/common/errors', 0), merge } };
 }
 
 /** The document as the page is served it: Caster's import map and Cicero's head ahead of the author's own. */
@@ -114,8 +116,18 @@ export async function printOnPage(page: Page, missing: Set<string>, flags: RunFl
     await page.goto(ORIGIN + o.docPath, { waitUntil: 'load' });
   }
   progress?.lap('load');
+  return cutAndPrint(page, missing, flags, o);
+}
+
+/**
+ * The second half of {@link printOnPage}, on a document already in the page: a host that writes the document itself, as a mail merge does, comes in here.
+ *
+ * @throws {BuildError} where the cut or the print refused.
+ */
+export async function cutAndPrint(page: Page, missing: Set<string>, flags: RunFlags, o: RunOptions): Promise<Printed> {
+  const { progress } = o;
   progress?.step('cut');
-  const cut = await page.evaluate(cutInPage, { cicero: flags.cicero, measures: o.measures === true });
+  const cut = await page.evaluate(cutInPage, { cicero: flags.cicero, measures: o.measures === true, ...(o.resumeAt ? { resumeAt: o.resumeAt } : {}) });
   progress?.lap('cut');
   const measures = 'refused' in cut ? [] : cut.measures;
   progress?.cicero?.(measures);
