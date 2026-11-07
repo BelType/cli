@@ -7,6 +7,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { specimen } from '@beltype/specimens';
+import { ValidationError } from '@beltype/common/errors';
 import { print } from '../src/print.ts';
 import { serve, keptRoad, WARMUP, WARMUP_FONT } from '../src/serve.ts';
 
@@ -341,4 +342,22 @@ test('a request with a foreign Host or Origin is a 403, before the body is read'
   assert.equal((await fetch(`${server.url}/health`, { headers: { origin: 'https://evil.example' } })).status, 403);
   assert.equal((await fetch(`${server.url}/health`, { headers: { origin: server.url } })).status, 200);
   assert.equal((await fetch(`${server.url}/health`)).status, 200);
+});
+
+// Under a wildcard bind the server cannot know its own name, so the names it answers are the operator's list, and with no list it does not start: a rebound name would otherwise reach it under its own Host.
+test('a wildcard bind answers only the hosts it is allowed, and with no list refuses to start', { timeout: 60_000 }, async () => {
+  await assert.rejects(serve({ ...options, host: '0.0.0.0', log: () => {} }), (error: Error) => error instanceof ValidationError && /--allowed-hosts/.test(error.message));
+  const { s } = await own({ host: '0.0.0.0', allowedHosts: ['beltype-serve:3000', 'printer.lan'] });
+  const { port } = new URL(s.url);
+  const health = (host: string, origin?: string) => new Promise<number>((resolve, reject) => {
+    http.get({ host: '127.0.0.1', port, path: '/health', headers: { host, ...(origin ? { origin } : {}) } }, (res) => { res.resume(); resolve(res.statusCode!); }).on('error', reject);
+  });
+  assert.equal(await health('evil.example:3000'), 403);
+  assert.equal(await health(`127.0.0.1:${port}`), 403);
+  assert.equal(await health('beltype-serve:3001'), 403);
+  assert.equal(await health('beltype-serve:3000'), 200);
+  assert.equal(await health('BELTYPE-SERVE:3000'), 200);
+  assert.equal(await health('printer.lan:8080'), 200);
+  assert.equal(await health('beltype-serve:3000', 'https://evil.example'), 403);
+  assert.equal(await health('beltype-serve:3000', 'http://beltype-serve:3000'), 200);
 });
