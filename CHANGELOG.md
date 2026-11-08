@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.9 — 2026-11-08
 
 - **Cicero 0.1.11.** The pin moves from Cicero 0.1.10, under which a paragraph cut at a hyphen the browser drew (`hyphens: auto`) was refused by Caster: the first piece's last word read `conse‐`, matched no run of its source, and 749 characters of the Quiet Press counted as presented on no page (Cicero's Codeberg issue 14). 0.1.8 carries the fault; 0.1.11 writes the hyphen as an engine text node before a break mark.
 - **A refused print leaves no file.** `beltype print` removes the output as the run starts, so a print that refuses no longer leaves an earlier PDF at that path to stand for it. Proved by `test/small-rows.test.ts`.

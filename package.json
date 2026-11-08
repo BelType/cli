@@ -1,6 +1,6 @@
 {
   "name": "@beltype/cli",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "beltype, the command line: a finished HTML document printed to PDF by Cicero and Caster in Chromium's headless shell.",
   "type": "module",
   "license": "MIT",
