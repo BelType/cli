@@ -13,8 +13,8 @@ import { ValidationError } from '@beltype/common/errors';
 export const cliFlags = defineFlags('beltype', {
   /** Default `'caster'`: Cicero cuts and Caster prints. `'chromium'` has Chromium print the pages Cicero presented, which is what `check` compares Caster against. */
   printer: { values: ['caster', 'chromium'], default: 'caster' },
-  /** Default `false`: no proof. `true` screenshots each presented page, rasterises the PDF and diffs the pairs into `<name>.check/`. */
-  check: { values: [false, true], default: false }
+  /** Default `false`: no check. `true` screenshots each presented page, rasterises the PDF, diffs the pairs into `<name>.check/` and fails the run on a page over the threshold or a page count that differs; `'report'` writes the same report and never fails. */
+  check: { values: [false, true, 'report'], default: false as boolean | 'report' }
 });
 
 /**

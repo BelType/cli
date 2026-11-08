@@ -4,19 +4,19 @@
  * @remarks
  * Two verbs: `beltype print <file.html> [-o <file.pdf>]` and `beltype serve` (see `serve.ts`). The output defaults to the input's name with `.pdf`, beside it. A flag the parser does not know is refused, never ignored.
  *
- * Flags have one shape across BelType: `--flag <owner>.<name>=<value>`, repeatable, names a row of a package's table (`beltype print --help` lists them all). `--printer` and `--check` are the command line's own rows spelled plainly; `--trace <file>` takes a free string, so it is a plain option beside the table, and so is `--no-sandbox`, which belongs to the launch and to no package's table.
+ * Flags have one shape across BelType: `--flag <owner>.<name>=<value>`, repeatable, names a row of a package's table (`beltype print --help` lists them all). `--printer` and `--check` are the command line's own rows spelled plainly, and a bare `--check` is `--check=true`; `--trace <file>` takes a free string, so it is a plain option beside the table, and so is `--no-sandbox`, which belongs to the launch and to no package's table.
  *
  * @packageDocumentation
  */
 
 import { parseArgs } from 'node:util';
 import { BelTypeError, ValidationError } from '@beltype/common/errors';
-import { checkLines } from './check.ts';
+import { checkLines, gate } from './check.ts';
 import { cliFlags, createdFromEnv, flagsHelp, parseFlagArgs } from './flags.ts';
 import { print } from './print.ts';
 import { serve } from './serve.ts';
 
-const USAGE = 'usage: beltype serve [--host 127.0.0.1] [--port 3000] [--max-upload 50] [--timeout 60] [--restart-after 100] [--allowed-hosts <name[:port],…>] [--no-sandbox]\n       beltype print <file.html> [-o <file.pdf>] [--printer caster|chromium] [--check] [--trace <file.json>] [--no-sandbox] [--flag <owner>.<name>=<value>]...';
+const USAGE = 'usage: beltype serve [--host 127.0.0.1] [--port 3000] [--max-upload 50] [--timeout 60] [--restart-after 100] [--allowed-hosts <name[:port],…>] [--no-sandbox]\n       beltype print <file.html> [-o <file.pdf>] [--printer caster|chromium] [--check[=report]] [--trace <file.json>] [--no-sandbox] [--flag <owner>.<name>=<value>]...';
 
 async function serveVerb(argv: string[]): Promise<void> {
   const { values } = parseArgs({ args: argv, options: {
@@ -53,12 +53,12 @@ async function main(argv: string[]): Promise<number> {
     await serveVerb(argv.slice(1));
     return -1;
   }
-  const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, options: {
+  const { values, positionals } = parseArgs({ args: argv.map((a) => (a === '--check' ? '--check=true' : a)), allowPositionals: true, options: {
     output: { type: 'string', short: 'o' },
     help: { type: 'boolean', short: 'h' },
     flag: { type: 'string', multiple: true },
     printer: { type: 'string' },
-    check: { type: 'boolean' },
+    check: { type: 'string' },
     trace: { type: 'string' },
     'no-sandbox': { type: 'boolean' }
   } });
@@ -73,12 +73,15 @@ async function main(argv: string[]): Promise<number> {
   }
   const given = await parseFlagArgs(values.flag ?? []);
   if (values.printer !== undefined) given.beltype['printer'] = cliFlags.parse('printer', values.printer);
-  if (values.check) given.beltype['check'] = true;
+  if (values.check !== undefined) given.beltype['check'] = cliFlags.parse('check', values.check);
   const output = values.output ?? input.replace(/\.html?$/i, '') + '.pdf';
   const created = createdFromEnv();
   const result = await print(input, output, { given, sandbox: !values['no-sandbox'], ...(values.trace !== undefined ? { trace: values.trace } : {}), ...(created ? { created } : {}) });
   console.log(`${result.output}: ${result.pages} pages, ${result.words} words, ${(result.ms / 1000).toFixed(1)} s`);
-  if (result.check) for (const line of checkLines(result.check)) console.log(line);
+  if (result.check) {
+    for (const line of checkLines(result.check)) console.log(line);
+    gate(result.check, given.beltype['check'] as true | 'report');
+  }
   return 0;
 }
 

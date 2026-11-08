@@ -31,7 +31,7 @@ export type Missing = { add(entry: string): unknown };
 export type Assets = { files: Record<string, string>; dirs: Record<string, string> };
 
 /** The values a print runs under: Caster's given values (its defaults are resolved in the page), and Cicero's and the command line's resolved ones. */
-export type RunFlags = { caster: Record<string, unknown>; cicero: Record<string, unknown>; beltype: { printer: string; check: boolean } };
+export type RunFlags = { caster: Record<string, unknown>; cicero: Record<string, unknown>; beltype: { printer: string; check: boolean | string } };
 
 /** What {@link printOnPage} asks beyond the flags. `reseat` is the served document to write into the page's existing document in place of a navigation, for a page kept between prints. `progress` is told each step as it starts and each lap as it ends, for a trace. */
 export type RunOptions = { created?: string; reseat?: string; sharedWriter?: boolean; measures?: boolean; resumeAt?: unknown; progress?: { step(name: string): void; lap(key: string): void; cicero?(measures: Measure[]): void } };

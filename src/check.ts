@@ -1,8 +1,8 @@
 /**
- * `--check`: the proof that the PDF is the screen.
+ * `--check`: the PDF compared with the pages Cicero presented in the same run.
  *
  * @remarks
- * Each page Cicero presented is screenshotted at device scale 1 (96 dpi), the PDF is rasterised at 96 dpi with mupdf, and the pairs are diffed (`compare.ts`). Output goes beside the PDF, in `<name>.check/`: `screen-N.png`, `print-N.png`, `diff-N.png` and `check.json`. It reports and never fails; a threshold waits until the first runs show where the noise floor is. `mupdf` is imported here, dynamically, so a plain print never loads it, and it is an optional peer, so a plain install never has it: it is AGPL-3.0, and this package is MIT.
+ * Each page Cicero presented is screenshotted at device scale 1 (96 dpi), the PDF is rasterised at 96 dpi with mupdf, and the pairs are diffed (`compare.ts`). Output goes beside the PDF, in `<name>.check/`: `screen-N.png`, `print-N.png`, `diff-N.png` and `check.json`. It is the proof that the printer drew what the engine cut, not a proof against an outside oracle: the acceptance suite of the cast road is that. Under `--check` a page whose share crosses {@link MAX_SHARE}, or a page count that differs between screen and print, fails the run ({@link gate}); `--check=report` writes the same report and never fails. `mupdf` is imported here, dynamically, so a plain print never loads it, and it is an optional peer, so a plain install never has it: it is AGPL-3.0, and this package is MIT.
  *
  * @packageDocumentation
  */
@@ -13,8 +13,18 @@ import { BuildError } from '@beltype/common/errors';
 import type { Page } from 'playwright-core';
 import type { Raster } from './compare.ts';
 
-export type CheckPage = { page: number; share: number; sameSize: boolean; screen: { width: number; height: number }; print: { width: number; height: number } };
-export type CheckResult = { dir: string; printer: string; threshold: number; screenPages: number; printPages: number; unmatched: number; mean: number; pages: CheckPage[] };
+/**
+ * The share of a page's pixels that may differ before the page fails the check: 3.5 %.
+ *
+ * @remarks
+ * Measured 2026-11-08 on Caster's corpus (`fixtures/lists/`, sixteen documents and 37 pages; `convert-images` and `convert-text` refuse at this CLI's Caster pin): median 0.73 %, 95th percentile 2.88 %. Text pages sit at 0.3 to 1.8 %, the highest cast-divided-row's page 4 at 1.76 %: Skia and mupdf shade glyph edges past the one pixel of slip `compare.ts` allows, and the screen's pages are 1122 px where the print's are 1123, so the last row reads red. The highest page whose two pictures share a size is vector-roads' page 2 at 2.88 %, its box opacity and blend over a backdrop drawn in other colours. The threshold is about twice the highest text page, above every page with matching geometry. What it catches: the paper's page 2 drawn blank reads 4.98 %, so a lost page or a page whose content moved crosses it. What it does not catch: the 120 by 30 CSS px red block in a table that Caster's acceptance suite fails (*on the cast road the oracle is the page Cicero presented*, Caster's DESIGN.md S91) reads 0.40 % of an A4 page, under the noise of a text page, so no whole-page threshold above the floor holds it. A bled page (roads, 454 px on screen and 537 in print) is compared over the common area from the corner, so it reads 18 to 26 % and fails.
+ */
+export const MAX_SHARE = 0.035;
+
+/** One page of the report; `pass` is the share at or under {@link MAX_SHARE}. */
+export type CheckPage = { page: number; share: number; pass: boolean; sameSize: boolean; screen: { width: number; height: number }; print: { width: number; height: number } };
+/** The report; `threshold` is the pixel's channel tolerance (`compare.ts`), `maxShare` the page's. */
+export type CheckResult = { dir: string; printer: string; threshold: number; maxShare: number; screenPages: number; printPages: number; unmatched: number; mean: number; pages: CheckPage[] };
 
 /**
  * Refuse `--check` before the run spends anything, when mupdf is not installed.
@@ -65,9 +75,9 @@ export async function checkPages(screens: readonly Uint8Array[], pdf: Uint8Array
     fs.writeFileSync(path.join(dir, `screen-${n}.png`), screens[i]!);
     fs.writeFileSync(path.join(dir, `print-${n}.png`), printed.pngs[i]!);
     fs.writeFileSync(path.join(dir, `diff-${n}.png`), d.image);
-    return { page: n, share: d.share, sameSize: d.sameSize, screen: { width: screen[i]!.width, height: screen[i]!.height }, print: { width: printed.pages[i]!.width, height: printed.pages[i]!.height } };
+    return { page: n, share: d.share, pass: d.share <= MAX_SHARE, sameSize: d.sameSize, screen: { width: screen[i]!.width, height: screen[i]!.height }, print: { width: printed.pages[i]!.width, height: printed.pages[i]!.height } };
   });
-  const result: CheckResult = { dir, printer, threshold: THRESHOLD, screenPages: screens.length, printPages: printed.pages.length, unmatched: diff.unmatched, mean: diff.mean, pages };
+  const result: CheckResult = { dir, printer, threshold: THRESHOLD, maxShare: MAX_SHARE, screenPages: screens.length, printPages: printed.pages.length, unmatched: diff.unmatched, mean: diff.mean, pages };
   fs.writeFileSync(path.join(dir, 'check.json'), JSON.stringify(result, null, 2));
   return result;
 }
@@ -78,4 +88,16 @@ export function checkLines(r: CheckResult): string[] {
     ...r.pages.map((p) => `check page ${p.page}: ${(p.share * 100).toFixed(2)}% differ${p.sameSize ? '' : ` (sizes differ: screen ${p.screen.width}x${p.screen.height}, print ${p.print.width}x${p.print.height})`}`),
     `check mean: ${(r.mean * 100).toFixed(2)}% over ${r.pages.length} pages${r.unmatched ? `; ${r.unmatched} page(s) unmatched (screen ${r.screenPages}, print ${r.printPages})` : ''}; ${r.dir}`
   ];
+}
+
+/**
+ * Fail the run on what the report found, under `--check`; under `--check=report`, nothing.
+ *
+ * @throws {BuildError} one line a page over {@link MAX_SHARE}, naming its share and its diff picture, and one where the page counts differ.
+ */
+export function gate(r: CheckResult, mode: true | 'report'): void {
+  if (mode === 'report') return;
+  const lines = r.pages.filter((p) => !p.pass).map((p) => `check page ${p.page} fails: ${(p.share * 100).toFixed(2)}% differ, over ${(r.maxShare * 100).toFixed(1)}%${p.sameSize ? '' : ' (sizes differ)'}; ${path.join(r.dir, `diff-${p.page}.png`)}`);
+  if (r.screenPages !== r.printPages) lines.push(`check fails: the screen has ${r.screenPages} pages and the print ${r.printPages}; ${r.dir}`);
+  if (lines.length) throw new BuildError(lines.join('\n'));
 }
