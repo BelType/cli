@@ -40,13 +40,21 @@ export type PageKind = 'text' | 'picture';
  */
 export const TILE_FLOORS: Readonly<Record<PageKind, number>> = { text: 0.4, picture: 0.4 };
 
+/**
+ * A transform or a guess the printer confessed, where it lies on the presented page: Caster's `ReportConfession` (*the printer guesses, says so, and withdraws the claim*, Caster's DESIGN.md S90, amended 2026-11-08). `page` is one-based, `rect` is in CSS px with the page box's top-left as origin, and `kind` is one of Caster's closed set (`black-text`, `cmyk-text`, `cmyk-image`, `undecodable-image`, `raster-shadow`, `raster`, `blend`, `opacity`). A Caster that confesses nothing hands back none, and nothing is excused.
+ */
+export type Confession = { page: number; kind: string; rect: { x: number; y: number; width: number; height: number }; element: string; note: string };
+
+/** A tile over its floor that a confession excused, and which. */
+export type ExcusedTile = { x: number; y: number; share: number; kind: string; element: string };
+
 /** One presented page: its screenshot and what it holds. */
 export type Shot = { png: Uint8Array; kind: PageKind };
 
-/** One page of the report; `pass` is the share at or under {@link MAX_SHARE} and the worst tile at or under its kind's floor in {@link TILE_FLOORS}; `trimAt` is where the presented page was found in a print larger than it. */
-export type CheckPage = { page: number; share: number; tile: { share: number; x: number; y: number }; kind: PageKind; pass: boolean; sameSize: boolean; screen: { width: number; height: number }; print: { width: number; height: number }; trimAt?: { x: number; y: number } };
-/** The report; `threshold` is the pixel's channel tolerance (`compare.ts`), `maxShare` the page's. */
-export type CheckResult = { dir: string; printer: string; threshold: number; maxShare: number; screenPages: number; printPages: number; unmatched: number; mean: number; pages: CheckPage[] };
+/** One page of the report; `tile` is the worst tile no confession excused, `excused` the tiles over the floor that one did; `pass` is the share at or under {@link MAX_SHARE} and `tile` at or under its kind's floor in {@link TILE_FLOORS}; `trimAt` is where the presented page was found in a print larger than it. */
+export type CheckPage = { page: number; share: number; tile: { share: number; x: number; y: number }; excused: ExcusedTile[]; kind: PageKind; pass: boolean; sameSize: boolean; screen: { width: number; height: number }; print: { width: number; height: number }; trimAt?: { x: number; y: number } };
+/** The report; `threshold` is the pixel's channel tolerance (`compare.ts`), `maxShare` the page's, `confessions` what the printer's report confessed, as read. */
+export type CheckResult = { dir: string; printer: string; threshold: number; maxShare: number; confessions: Confession[]; screenPages: number; printPages: number; unmatched: number; mean: number; pages: CheckPage[] };
 
 /**
  * Refuse `--check` before the run spends anything, when mupdf is not installed.
@@ -107,8 +115,10 @@ async function rasterOfPng(png: Uint8Array): Promise<Raster> {
  *
  * @remarks
  * A printed page larger than its screenshot (a bleed and print marks grow Caster's media round the page) is cropped to the presented page before the diff: its bottom-left corner is the page's user-space origin (`rasterize`), so the window is the screenshot's size with its bottom edge there. `print-N.png` stays the whole printed page.
+ *
+ * A tile over its floor is excused where the printer confessed a region over it: each confessed `rect`, grown by the one pixel of slip the diff allows, covers pixels of the screenshot, and a tile is excused when the share of its pixels outside every cover that still differ, counted against what lies outside (at least a quarter of a tile, as at an edge), is at or under the floor. A tile wholly inside a cover is excused; one straddling a cover's edge is excused only when its outside part, on its own, would pass. The tile names the confession that covers most of it. The share is never excused: a confessed region cannot stand for a lost page.
  */
-export async function checkPages(shots: readonly Shot[], pdf: Uint8Array, dir: string, printer: string): Promise<CheckResult> {
+export async function checkPages(shots: readonly Shot[], pdf: Uint8Array, dir: string, printer: string, confessions: readonly Confession[] = []): Promise<CheckResult> {
   const { rasterize, diffPages, crop, THRESHOLD } = await import('./compare.ts');
   const printed = rasterize(pdf);
   const screen = await Promise.all(shots.map((s) => rasterOfPng(s.png)));
@@ -120,7 +130,15 @@ export async function checkPages(shots: readonly Shot[], pdf: Uint8Array, dir: s
     return { x: Math.round(o.x), y: Math.round(o.y) - s.height };
   });
   const aligned = printed.pages.map((p, i) => (trims[i] ? crop(p, trims[i].x, trims[i].y, screen[i]!.width, screen[i]!.height) : p));
-  const diff = diffPages(screen, aligned, TILE);
+  const grown = (c: Confession, r: Raster) => ({ c, x0: Math.max(0, Math.floor(c.rect.x) - 1), y0: Math.max(0, Math.floor(c.rect.y) - 1), x1: Math.min(r.width, Math.ceil(c.rect.x + c.rect.width) + 1), y1: Math.min(r.height, Math.ceil(c.rect.y + c.rect.height) + 1) });
+  const regions = screen.map((r, i) => confessions.filter((c) => c.page === i + 1).map((c) => grown(c, r)));
+  const covers = screen.map((r, i) => {
+    if (!regions[i]!.length) return undefined;
+    const cover = new Uint8Array(r.width * r.height);
+    for (const g of regions[i]!) for (let y = g.y0; y < g.y1; y++) cover.fill(1, y * r.width + g.x0, y * r.width + Math.max(g.x0, g.x1));
+    return cover;
+  });
+  const diff = diffPages(screen, aligned, TILE, covers);
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
   const pages: CheckPage[] = diff.pages.map((d, i) => {
@@ -129,10 +147,19 @@ export async function checkPages(shots: readonly Shot[], pdf: Uint8Array, dir: s
     fs.writeFileSync(path.join(dir, `print-${n}.png`), printed.pngs[i]!);
     fs.writeFileSync(path.join(dir, `diff-${n}.png`), d.image);
     const kind = shots[i]!.kind;
+    const floor = TILE_FLOORS[kind];
     const trimAt = trims[i];
-    return { page: n, share: d.share, tile: d.tile, kind, pass: d.share <= MAX_SHARE && d.tile.share <= TILE_FLOORS[kind], sameSize: d.sameSize, screen: { width: screen[i]!.width, height: screen[i]!.height }, print: { width: printed.pages[i]!.width, height: printed.pages[i]!.height }, ...(trimAt ? { trimAt } : {}) };
+    const excused: ExcusedTile[] = [];
+    let tile = { share: 0, x: 0, y: 0 };
+    for (const t of d.tiles) {
+      const overlap = (g: { x0: number; y0: number; x1: number; y1: number }) => Math.max(0, Math.min(g.x1, t.x + TILE) - Math.max(g.x0, t.x)) * Math.max(0, Math.min(g.y1, t.y + TILE) - Math.max(g.y0, t.y));
+      const by = regions[i]!.reduce<{ c: Confession; area: number } | null>((best, g) => { const area = overlap(g); return area > (best?.area ?? 0) ? { c: g.c, area } : best; }, null);
+      if (t.share > floor && by && t.outside <= floor) excused.push({ x: t.x, y: t.y, share: t.share, kind: by.c.kind, element: by.c.element });
+      else if (t.share > tile.share) tile = { share: t.share, x: t.x, y: t.y };
+    }
+    return { page: n, share: d.share, tile, excused, kind, pass: d.share <= MAX_SHARE && tile.share <= floor, sameSize: d.sameSize, screen: { width: screen[i]!.width, height: screen[i]!.height }, print: { width: printed.pages[i]!.width, height: printed.pages[i]!.height }, ...(trimAt ? { trimAt } : {}) };
   });
-  const result: CheckResult = { dir, printer, threshold: THRESHOLD, maxShare: MAX_SHARE, screenPages: shots.length, printPages: printed.pages.length, unmatched: diff.unmatched, mean: diff.mean, pages };
+  const result: CheckResult = { dir, printer, threshold: THRESHOLD, maxShare: MAX_SHARE, confessions: [...confessions], screenPages: shots.length, printPages: printed.pages.length, unmatched: diff.unmatched, mean: diff.mean, pages };
   fs.writeFileSync(path.join(dir, 'check.json'), JSON.stringify(result, null, 2));
   return result;
 }
@@ -140,7 +167,11 @@ export async function checkPages(shots: readonly Shot[], pdf: Uint8Array, dir: s
 /** One line a page, and the mean. */
 export function checkLines(r: CheckResult): string[] {
   return [
-    ...r.pages.map((p) => `check page ${p.page}: ${(p.share * 100).toFixed(2)}% differ, worst tile ${(p.tile.share * 100).toFixed(1)}% at (${p.tile.x}, ${p.tile.y}), a ${p.kind} page${p.sameSize ? '' : ` (sizes differ: screen ${p.screen.width}x${p.screen.height}, print ${p.print.width}x${p.print.height})`}`),
+    ...r.pages.map((p) => {
+      const worst = p.excused.reduce<ExcusedTile | null>((w, t) => (t.share > (w?.share ?? 0) ? t : w), null);
+      const tile = worst && worst.share > p.tile.share ? `worst tile ${(worst.share * 100).toFixed(0)}% at (${worst.x}, ${worst.y}) excused by ${worst.kind} on ${worst.element}` : `worst tile ${(p.tile.share * 100).toFixed(1)}% at (${p.tile.x}, ${p.tile.y})`;
+      return `check page ${p.page}: ${(p.share * 100).toFixed(2)}% differ, ${tile}; a ${p.kind} page${p.sameSize ? '' : ` (sizes differ: screen ${p.screen.width}x${p.screen.height}, print ${p.print.width}x${p.print.height})`}`;
+    }),
     `check mean: ${(r.mean * 100).toFixed(2)}% over ${r.pages.length} pages${r.unmatched ? `; ${r.unmatched} page(s) unmatched (screen ${r.screenPages}, print ${r.printPages})` : ''}; ${r.dir}`
   ];
 }

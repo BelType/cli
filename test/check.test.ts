@@ -9,7 +9,7 @@ import { specimen } from '@beltype/specimens';
 import * as mupdf from 'mupdf';
 import { BuildError } from '@beltype/common/errors';
 import { print } from '../src/print.ts';
-import { checkPages, gate, MAX_SHARE, TILE, TILE_FLOORS, type Shot } from '../src/check.ts';
+import { checkLines, checkPages, gate, MAX_SHARE, TILE, TILE_FLOORS, type Confession, type Shot } from '../src/check.ts';
 import { cliFlags } from '../src/flags.ts';
 
 const SAMPLE = specimen('paper').entry;
@@ -165,4 +165,47 @@ test('a bled page is aligned on the trim: the print\'s media grows round the pre
   assert.ok(p.share < MAX_SHARE && p.tile.share <= TILE_FLOORS.text, `share ${p.share}, tile ${p.tile.share}`);
   assert.equal(p.sameSize, true);
   assert.doesNotThrow(() => gate(r, true));
+});
+
+/** A confession of page 1 over the rectangle, in the presented page's CSS px. */
+const confessed = (x: number, y: number, width: number, height: number, kind = 'black-text', element = 'table[0]'): Confession => ({ page: 1, kind, rect: { x, y, width, height }, element, note: '' });
+
+test('a confession whose region covers S91\'s block excuses its tiles, and the report line and check.json name it', async () => {
+  const { pdf, pngs } = pages(1);
+  const dir = scratch();
+  const r = await checkPages(shots([painted(pngs[0]!, 300, 340, 120, 30)]), pdf, dir, 'caster', [confessed(296, 336, 128, 38)]);
+  const p = r.pages[0]!;
+  assert.equal(p.pass, true);
+  assert.ok(p.tile.share <= TILE_FLOORS.text, `worst unexcused tile ${p.tile.share}`);
+  assert.ok(p.excused.length > 0 && p.excused.every((t) => t.kind === 'black-text' && t.element === 'table[0]'));
+  assert.doesNotThrow(() => gate(r, true));
+  assert.match(checkLines(r)[0]!, /^check page 1: \d+\.\d\d% differ, worst tile \d+% at \(\d+, \d+\) excused by black-text on table\[0\]; a text page$/);
+  const written = JSON.parse(fs.readFileSync(path.join(dir, 'check.json'), 'utf8'));
+  assert.deepEqual(Object.keys(written.pages[0].excused[0]).sort(), ['element', 'kind', 'share', 'x', 'y']);
+});
+
+test('a confession elsewhere on the page excuses nothing: the block fails as before', async () => {
+  const { pdf, pngs } = pages(1);
+  const r = await checkPages(shots([painted(pngs[0]!, 300, 340, 120, 30)]), pdf, scratch(), 'caster', [confessed(40, 900, 300, 60), { ...confessed(0, 0, 794, 1122), page: 2 }]);
+  assert.equal(r.pages[0]!.pass, false);
+  assert.deepEqual(r.pages[0]!.excused, []);
+  assert.throws(() => gate(r, true), /check page 1 fails: tile at \(\d+, \d+\) differs \d+%, over the 40% floor for a text page/);
+});
+
+test('a tile straddling a confessed region is excused only when what lies outside it, on its own, is under the floor', async () => {
+  const { pdf, pngs } = pages(1);
+  // the block fills the tile at (240, 240); the confession covers its left 12 columns only, so the right half still differs whole
+  const r = await checkPages(shots([painted(pngs[0]!, 240, 240, 24, 24)]), pdf, scratch(), 'caster', [confessed(240, 240, 12, 24)]);
+  assert.equal(r.pages[0]!.pass, false);
+  assert.deepEqual([r.pages[0]!.tile.x, r.pages[0]!.tile.y], [240, 240]);
+});
+
+test('a confession never excuses the share: a blank page under a full-page confession still fails', async () => {
+  const doc = new mupdf.PDFDocument();
+  doc.insertPage(-1, doc.addPage([0, 0, 595.28, 841.89], 0, {}, '0.2 g 72 72 451 600 re f'));
+  const pdf = doc.saveToBuffer('').asUint8Array().slice();
+  const { pngs } = pages(1);
+  const r = await checkPages(shots([painted(pngs[0]!, 0, 0, 794, 1122, [255, 255, 255])]), pdf, scratch(), 'caster', [confessed(0, 0, 794, 1123, 'raster')]);
+  assert.equal(r.pages[0]!.pass, false);
+  assert.throws(() => gate(r, true), /check page 1 fails: \d+\.\d\d% differ, over 3\.5%/);
 });
