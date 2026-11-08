@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **A refused print leaves no file.** `beltype print` removes the output as the run starts, so a print that refuses no longer leaves an earlier PDF at that path to stand for it. Proved by `test/small-rows.test.ts`.
+- **`beltype print` says the standard its file claims.** The summary line ends with Caster's claim, `pdf-2.0; pdf-ua-2` or `pdf-2.0`, as `beltype serve` already sends it in `x-beltype-standard`; `print()` returns it as `standard`. Under `--printer chromium` Caster never saw the file and the line says nothing. Proved by `test/small-rows.test.ts`.
+- **A symlink cannot pull a file from outside the document's folder.** The folder test was lexical while the file test followed links, so a link inside the folder served what it pointed at. Both sides are now resolved to where they land, and a link that stays inside still serves. Proved by `test/small-rows.test.ts`.
+- **The kept page's stale font is Chromium's, not Caster's** (`serve-font-cached-by-url`, still a todo). Measured in a bare Playwright page: a font under one URL, then `document.open()` and other bytes under that URL, measures the first font's width again, with `cache-control: no-store`, `Network.setCacheDisabled` or `Network.clearBrowserCache`; a second page of the same context, or a new URL, measures the new bytes. The kept-page test's todo says so now instead of blaming Caster. No code fix: the only one is a new page for every document that declares a font, which is a ruling.
+- **The CLI is a binary, not a module.** The README says so: no `exports` map and no typings until a consumer asks.
+
 ## 0.1.8 — 2026-11-08
 
 - **Cicero 0.1.10, Caster 0.2.5 and specimens 0.1.1.** The pins move from Cicero 0.1.6, Caster 0.1.7 and specimens 0.1.0. Caster 0.2.5 prints a kept page's second cut as its first: under Cicero 0.1.10 a mail merge whose data changed nothing printed the `provvedimento-imu`'s footer with one frozen page number on every page. Caster's report carries `confessions`, so `--check` now excuses the tiles a confession covers; the mail-merge tests over `bolletta` and `provvedimento-imu` read specimens 0.1.1. What each release changed is in its own CHANGELOG.
