@@ -77,6 +77,8 @@ npx playwright-core@1.63.0 install chromium-headless-shell
 
 The companions come from npm, pinned exactly: `@beltype/cicero` 0.1.10, `@beltype/caster` 0.2.5 and `@beltype/common` 0.1.2.
 
+The package is a binary, not a module: it has no `exports` map and ships no typings, so `import '@beltype/cli'` is not a supported road until a consumer asks for one.
+
 ## Working on it
 
 ```bash

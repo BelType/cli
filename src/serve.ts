@@ -23,7 +23,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { ciceroFlags } from '@beltype/cicero/flags';
 import { BuildError, ValidationError, FlagError } from '@beltype/common/errors';
 import { cliFlags, createdFromEnv, parseFlagArgs, type Given } from './flags.ts';
-import { ARGS, ORIGIN, VIEWPORT, documentAssets, servedHtml, routeCompanions, routeDocument, printOnPage, cutAndPrint, refusal, deferralLine, type Assets, type Printed } from './run.ts';
+import { ARGS, ORIGIN, VIEWPORT, documentAssets, servedHtml, routeCompanions, routeDocument, printOnPage, cutAndPrint, refusal, deferralLine, standardOf, type Assets, type Printed } from './run.ts';
 import { keepMergeInPage, reseatInPage, seatMergeInPage, type Conformance, type Refusal } from './in-page.ts';
 import type { MergeData } from './merge-tab.ts';
 
@@ -491,5 +491,7 @@ function instant(value: string): string {
 }
 
 /** What the file claims, as Caster's report says it: `x-beltype-standard: pdf-2.0; pdf-ua-2`, or `pdf-2.0` alone where the claim was not asked for or was withdrawn. A print under `beltype.printer=chromium` is Chromium's own file, which Caster never saw, and carries no header. */
-export const standardHeader = (conformance: Conformance | null): Record<string, string> =>
-  conformance === null ? {} : { 'x-beltype-standard': conformance === 'pdfua2' ? 'pdf-2.0; pdf-ua-2' : 'pdf-2.0' };
+export const standardHeader = (conformance: Conformance | null): Record<string, string> => {
+  const standard = standardOf(conformance);
+  return standard === null ? {} : { 'x-beltype-standard': standard };
+};

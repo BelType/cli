@@ -299,7 +299,7 @@ test('a refusal on the kept page (the paper-12 shuffle) is the fresh page\'s, an
 });
 
 // The server's own warm-up loads warm.woff2 at this very URL, so a second server is as stale as the first and cannot be the control: beltype print's fresh browser is.
-test('a document on the kept page prints its own font, though the one before used the same name', { todo: 'Caster keys its shapers by URL (loadHbFont, hbShaper, varShaper) and the module outlives document.open(), so the second font is shaped with the first: the fix is in codeberg.org/BelType/caster' }, async () => {
+test('a document on the kept page prints its own font, though the one before used the same name', { todo: "not Caster's since 0.2.1, which keys fonts by bytes: Chromium itself keeps the first font under a URL across document.open() on one Window, whatever the response's cache-control, Network.setCacheDisabled or Network.clearBrowserCache say, so Cicero cuts with the first font's widths and Caster prints the second (a fresh page in the same context, or the same font under another URL, prints the fresh bytes). A fix needs a new page per document that declares a font, which costs the kept page its point: a ruling" }, async () => {
   const serif = fs.readFileSync(path.join(FOLDER, 'fonts', 'SourceSerif4-Variable.woff2'));
   const doc = (font: Buffer) => {
     const form = new FormData();

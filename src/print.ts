@@ -17,11 +17,11 @@ import { ciceroFlags } from '@beltype/cicero/flags';
 import type { CasterTrace, Measure } from './in-page.ts';
 import { cliFlags, tableOf, type Given } from './flags.ts';
 import { checkPages, requireMupdf, type CheckResult } from './check.ts';
-import { ARGS, VIEWPORT, documentAssets, servedHtml, routeCompanions, routeDocument, printOnPage, refusal, deferralLine } from './run.ts';
+import { ARGS, VIEWPORT, documentAssets, servedHtml, routeCompanions, routeDocument, printOnPage, refusal, deferralLine, standardOf } from './run.ts';
 
 export { spliceHead } from './run.ts';
 
-export type PrintResult = { output: string; pages: number; words: number; deferred: number; ms: number; check?: CheckResult };
+export type PrintResult = { output: string; pages: number; words: number; deferred: number; ms: number; standard: string | null; check?: CheckResult };
 
 /** What a run asks for beyond the document: the values given per owner (anything not given is its default), and where to write the trace. `sandbox` false launches Chromium without its sandbox, for a container that runs as root. */
 export type PrintOptions = { given?: Partial<Given>; trace?: string; created?: string; sandbox?: boolean };
@@ -62,6 +62,8 @@ export async function print(input: string, output: string, options: PrintOptions
   let step = 'launch';
   let chromiumVersion = 'unknown';
   try {
+    // A run that refuses writes no file, so an earlier print at this path must not stand for it.
+    fs.rmSync(output, { force: true });
     if (flags.beltype.check) await requireMupdf();
     const html = fs.readFileSync(input, 'utf8');
     const root = path.dirname(path.resolve(input));
@@ -94,7 +96,7 @@ export async function print(input: string, output: string, options: PrintOptions
         for (const warning of printed.warnings) console.warn(typeof warning === 'string' ? warning : JSON.stringify(warning));
         for (const deferral of printed.deferred) console.warn(deferralLine(deferral));
       } else lap('print');
-      const { bytes, pages, words, screens, confessions } = printed;
+      const { bytes, pages, words, screens, confessions, conformance } = printed;
       step = 'close';
       await browser.close();
       lap('close');
@@ -109,7 +111,7 @@ export async function print(input: string, output: string, options: PrintOptions
         check = await checkPages(screens, bytes, path.resolve(output).replace(/\.pdf$/i, '') + '.check', flags.beltype.printer, confessions);
         lap('check');
       }
-      return { output, pages, words, deferred: printed.deferred.length, ms: performance.now() - started, ...(check ? { check } : {}) };
+      return { output, pages, words, deferred: printed.deferred.length, standard: standardOf(conformance), ms: performance.now() - started, ...(check ? { check } : {}) };
     } finally {
       await browser.close();
     }

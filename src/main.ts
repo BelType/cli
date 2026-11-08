@@ -77,7 +77,7 @@ async function main(argv: string[]): Promise<number> {
   const output = values.output ?? input.replace(/\.html?$/i, '') + '.pdf';
   const created = createdFromEnv();
   const result = await print(input, output, { given, sandbox: !values['no-sandbox'], ...(values.trace !== undefined ? { trace: values.trace } : {}), ...(created ? { created } : {}) });
-  console.log(`${result.output}: ${result.pages} pages, ${result.words} words, ${(result.ms / 1000).toFixed(1)} s`);
+  console.log(`${result.output}: ${result.pages} pages, ${result.words} words, ${(result.ms / 1000).toFixed(1)} s${result.standard ? `, ${result.standard}` : ''}`);
   if (result.check) {
     for (const line of checkLines(result.check)) console.log(line);
     gate(result.check, given.beltype['check'] as true | 'report');

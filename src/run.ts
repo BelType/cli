@@ -182,7 +182,14 @@ function fromAssets(assets: Assets, assetPath: string): string | null {
 function within(dir: string, rel: string): string | null {
   const file = path.resolve(dir, rel);
   const inside = path.relative(dir, file);
-  return !inside.startsWith('..') && !path.isAbsolute(inside) && isFile(file) ? file : null;
+  if (inside.startsWith('..') || path.isAbsolute(inside) || !isFile(file)) return null;
+  // A link is followed to where it lands, and only a landing inside the folder is served.
+  const landed = path.relative(fs.realpathSync(dir), fs.realpathSync(file));
+  return !landed.startsWith('..') && !path.isAbsolute(landed) ? file : null;
 }
+
+/** What a print's file claims, as Caster's report says it: `pdf-2.0; pdf-ua-2`, or `pdf-2.0` alone where the claim was not asked for or was withdrawn; `null` where Caster never saw the file (`--printer chromium`). */
+export const standardOf = (conformance: Conformance | null): string | null =>
+  conformance === null ? null : conformance === 'pdfua2' ? 'pdf-2.0; pdf-ua-2' : 'pdf-2.0';
 
 const isFile = (file: string) => fs.existsSync(file) && fs.statSync(file).isFile();
