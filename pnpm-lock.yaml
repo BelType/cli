@@ -9,11 +9,11 @@ importers:
   .:
     dependencies:
       '@beltype/caster':
-        specifier: 0.1.7
-        version: 0.1.7
+        specifier: 0.2.5
+        version: 0.2.5
       '@beltype/cicero':
-        specifier: 0.1.6
-        version: 0.1.6
+        specifier: 0.1.10
+        version: 0.1.10
       '@beltype/common':
         specifier: 0.1.2
         version: 0.1.2
@@ -22,8 +22,8 @@ importers:
         version: 1.63.0
     devDependencies:
       '@beltype/specimens':
-        specifier: 0.1.0
-        version: 0.1.0
+        specifier: 0.1.1
+        version: 0.1.1
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5
@@ -48,24 +48,20 @@ packages:
   '@acemir/cssom@0.9.32':
     resolution: {integrity: sha512-OijrAUu7rrJhSIoHNg6LMPS5e344nwUHA+1EFYYjrh64D+GmytUsfBQjci45TjT+rd5Spsp8B5xsZDT+TgyXXQ==}
 
-  '@beltype/caster@0.1.7':
-    resolution: {integrity: sha512-Jy4kNIe0tCq76SVinWZkT7E/x/LhrfsHxksPFK1jzGdU6bd7rNdm5exVaj6WFbqS+LC4AGMdwYk8OykiOsZwRA==}
+  '@beltype/caster@0.2.5':
+    resolution: {integrity: sha512-fWRrmAPKGll5igIrVirC+XaE6S3lKJVAqKf7TjTiWTcq4ZXZImdFHKAYvh8x+z9/hO2vloS0UV8bunkdjojOLQ==}
     engines: {node: '>=22'}
 
-  '@beltype/cicero@0.1.6':
-    resolution: {integrity: sha512-N0ApCaEQ63bKFfEqimP9EtOowZ9yS+4j9NLLfKp8Zi7ZbqXQAs0Z2h11UMfGMuh0HUureF+mbLsIm/PbqABlYg==}
-    engines: {node: '>=22'}
-
-  '@beltype/common@0.1.1':
-    resolution: {integrity: sha512-WXj/dcjx9DdwF8+cgIYEo0Bhfgun3BszBljccglTcP4+PV4gyXD1APxUo8jyRm+eWlg8XCM3ow6izutfq6yiGw==}
+  '@beltype/cicero@0.1.10':
+    resolution: {integrity: sha512-P/ROeFC8JScitPS/J4psD/CKZIg1NuIFuvrWyGzpjCRmb+yjkyJxhdWubbeBW35+i+GB6W3cdTkBmDIxD8xTQQ==}
     engines: {node: '>=22'}
 
   '@beltype/common@0.1.2':
     resolution: {integrity: sha512-F/2kwZq4kd17TFMQCdl2El4k5QPnrghFwy8dJCUgVQLDr6Z0VkuZICslfnz2ZthMhBHqbaZFYIrSkG142V7PVw==}
     engines: {node: '>=22'}
 
-  '@beltype/specimens@0.1.0':
-    resolution: {integrity: sha512-8F34pZKrsg+bIOm+pvxCgxlyy6wGxpkLRtrpDiYk3cP5vg2XSDK2qPiP7G2/0JIbkywvjRDSZk+YllMlTuqgXA==}
+  '@beltype/specimens@0.1.1':
+    resolution: {integrity: sha512-IoHYvH5dG8kB/Vh82DvgadTAsrRsDJR/9+BGLdtunuqVlw9IWYFO7mZgR4R/YBzKo6HXX7O4H4gfvt+YVEQR+Q==}
     engines: {node: '>=22'}
 
   '@esbuild/aix-ppc64@0.28.2':
@@ -578,23 +574,21 @@ snapshots:
 
   '@acemir/cssom@0.9.32': {}
 
-  '@beltype/caster@0.1.7':
+  '@beltype/caster@0.2.5':
     dependencies:
       '@beltype/common': 0.1.2
 
-  '@beltype/cicero@0.1.6':
+  '@beltype/cicero@0.1.10':
     dependencies:
       '@beltype/common': 0.1.2
       css-tree: 3.2.1
       pdfjs-dist: 6.2.108
 
-  '@beltype/common@0.1.1': {}
-
   '@beltype/common@0.1.2': {}
 
-  '@beltype/specimens@0.1.0':
+  '@beltype/specimens@0.1.1':
     dependencies:
-      '@beltype/common': 0.1.1
+      '@beltype/common': 0.1.2
 
   '@esbuild/aix-ppc64@0.28.2':
     optional: true

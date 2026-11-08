@@ -76,8 +76,8 @@ test('every copy from data matches batch.html pixel for pixel, in any order', as
   log.length = 0;
   // Its running elements are lifted out of its one top-level box, so Cicero will not promise a patch and most of these are seated again; the road may improve, the pixels may not move.
   const order = [0, 1, 2, 3, 4, 4, 2, 0, 3, 1];
-  for (const k of order) {
+  for (const [step, k] of order.entries()) {
     const pdf = await bytes(await fetch(`${server.url}/templates/${template}/print`, { method: 'POST', body: JSON.stringify({ ...copies[k], created: CREATED }) }));
-    assert.ok(samePixels(rasterize(pdf).pages, oracle[k]!), `copy ${k} (step ${order.indexOf(k)}) differs from its article in batch.html\n${log.slice(-6).join('\n')}`);
+    assert.ok(samePixels(rasterize(pdf).pages, oracle[k]!), `copy ${k} (step ${step}) differs from its article in batch.html\n${log.slice(-6).join('\n')}`);
   }
 });

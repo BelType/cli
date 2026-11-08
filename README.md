@@ -75,7 +75,7 @@ Node 22 or later, and Playwright's headless shell for `playwright-core` 1.63.0:
 npx playwright-core@1.63.0 install chromium-headless-shell
 ```
 
-The companions come from npm, pinned exactly: `@beltype/cicero` 0.1.6, `@beltype/caster` 0.1.7 and `@beltype/common` 0.1.2.
+The companions come from npm, pinned exactly: `@beltype/cicero` 0.1.10, `@beltype/caster` 0.2.5 and `@beltype/common` 0.1.2.
 
 ## Working on it
 
