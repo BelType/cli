@@ -299,7 +299,7 @@ test('a refusal on the kept page (the paper-12 shuffle) is the fresh page\'s, an
 });
 
 // The server's own warm-up loads warm.woff2 at this very URL, so a second server is as stale as the first and cannot be the control: beltype print's fresh browser is.
-test('a document on the kept page prints its own font, though the one before used the same name', { todo: "not Caster's since 0.2.1, which keys fonts by bytes: Chromium itself keeps the first font under a URL across document.open() on one Window, whatever the response's cache-control, Network.setCacheDisabled or Network.clearBrowserCache say, so Cicero cuts with the first font's widths and Caster prints the second (a fresh page in the same context, or the same font under another URL, prints the fresh bytes). A fix needs a new page per document that declares a font, which costs the kept page its point: a ruling" }, async () => {
+test('a document on the kept page prints its own font, though the one before used the same name', async () => {
   const serif = fs.readFileSync(path.join(FOLDER, 'fonts', 'SourceSerif4-Variable.woff2'));
   const doc = (font: Buffer) => {
     const form = new FormData();
@@ -325,6 +325,28 @@ test('a document on the kept page prints its own font, though the one before use
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('a document whose font bytes are the same as the last keeps the kept page, and the page is not reopened', async () => {
+  const font = fs.readFileSync(WARMUP_FONT);
+  const post = async () => {
+    const form = new FormData();
+    form.append('index.html', new Blob([WARMUP]), 'index.html');
+    form.append('warm.woff2', new Blob([new Uint8Array(font)]), 'warm.woff2');
+    form.append('caster.writer', 'forme');
+    form.append('created', CREATED);
+    const t = performance.now();
+    const res = await fetch(`${server.url}/print`, { method: 'POST', body: form });
+    assert.equal(res.status, 200, await res.clone().text());
+    await res.arrayBuffer();
+    return Math.round(performance.now() - t);
+  };
+  await post();
+  const from = log.length;
+  const ms = await post();
+  const page = log.slice(from).map((l) => /road kept; page (\d+)/.exec(l)).find(Boolean);
+  assert.ok(page, `kept road: ${log.slice(from).join(' | ')}`);
+  console.log(`same bytes, kept page: ${ms} ms, page step ${page![1]} ms`);
 });
 
 // The door: a page in the user's browser can POST a form here with no preflight, so a request that does not name this server, or comes from another origin, is refused before its body is read.

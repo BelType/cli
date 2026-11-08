@@ -90,6 +90,8 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
   let kept: Page | null = null;
   /** The template whose merge the kept page shows, or null when it shows anything else. */
   let seated: string | null = null;
+  /** The SHA-256 of the bytes the kept page was served at each font address: Chromium keeps the first face it measured for a URL, so other bytes at a known address need a fresh page. */
+  const fontSeen = new Map<string, string>();
   const templates = new Map<string, Template>();
   let reseats = 0;
   let browser: Browser | null = null;
@@ -115,6 +117,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
     await routeDocument(page, missing, { root: path.join(os.tmpdir(), 'beltype-serve-none'), docPath: DOC_PATH, served: servedHtml('<!doctype html><html><head></head><body></body></html>') });
     await page.goto(ORIGIN + DOC_PATH, { waitUntil: 'load' });
     seated = null;
+    fontSeen.clear();
     return kept = page;
   };
 
@@ -141,7 +144,10 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       trace.road = keep ? 'kept' : 'fresh';
       const lapped = lapper(trace.ms);
       lapped.start('page');
+      const fonts = [...files].filter(([name]) => /\.(woff2?|ttf|otf)$/i.test(name)).map(([name, bytes]) => [name, crypto.createHash('sha256').update(bytes).digest('hex')] as const);
+      if (keep && kept && fonts.some(([name, hash]) => fontSeen.get(name) !== undefined && fontSeen.get(name) !== hash)) await closePage(kept);
       const page = current = keep ? (kept ?? await openKept()) : await context!.newPage();
+      if (keep) for (const [name, hash] of fonts) fontSeen.set(name, hash);
       active = mine;
       try {
         if (keep) {

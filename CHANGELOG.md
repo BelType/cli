@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **A document that serves other font bytes at a known address gets a fresh kept page** (`serve-font-cached-by-url`, ruled 2026-11-08). Chromium keeps the first face it measured for a font URL across `document.open()`, so Cicero cut with the old font's widths and Caster printed the new one. The kept page now records the SHA-256 of the bytes it was served at each font address (`woff`, `woff2`, `ttf`, `otf`); different bytes at an address it already loaded close the page and open a new one, and the record starts over. The same bytes keep the page. Proved by `test/serve.test.ts` (the former todo, and a case for the same bytes).
+- **The serve section states the worker limit** (`serve-worker-egress`). A document's dedicated or shared worker passes no route, so the README no longer says a print fetches nothing from a network: it says a page's own requests reach none, and that a worker's are not refused. No proxy.
+
 ## 0.1.9 — 2026-11-08
 
 - **Cicero 0.1.11.** The pin moves from Cicero 0.1.10, under which a paragraph cut at a hyphen the browser drew (`hyphens: auto`) was refused by Caster: the first piece's last word read `conse‐`, matched no run of its source, and 749 characters of the Quiet Press counted as presented on no page (Cicero's Codeberg issue 14). 0.1.8 carries the fault; 0.1.11 writes the hyphen as an engine text node before a break mark.
