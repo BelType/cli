@@ -4,6 +4,7 @@
 
 - **A document that serves other font bytes at a known address gets a fresh kept page** (`serve-font-cached-by-url`, ruled 2026-11-08). Chromium keeps the first face it measured for a font URL across `document.open()`, so Cicero cut with the old font's widths and Caster printed the new one. The kept page now records the SHA-256 of the bytes it was served at each font address (`woff`, `woff2`, `ttf`, `otf`); different bytes at an address it already loaded close the page and open a new one, and the record starts over. The same bytes keep the page. Proved by `test/serve.test.ts` (the former todo, and a case for the same bytes).
 - **The serve section states the worker limit** (`serve-worker-egress`). A document's dedicated or shared worker passes no route, so the README no longer says a print fetches nothing from a network: it says a page's own requests reach none, and that a worker's are not refused. No proxy.
+- **`0 words` for a tiny document is Caster's report, not the CLI's** (`cli-zero-words-tiny-document`, stopped). The count is Caster's `timing.words`, passed through unchanged. Reproduced: text directly in `<body>` with no element around it (`Hello there`) prints `0 words` and the PDF holds no text (`pdftotext` is empty), while `<p>` text counts. Caster's to answer; nothing changed here.
 
 ## 0.1.9 — 2026-11-08
 
