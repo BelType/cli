@@ -23,7 +23,7 @@ test('--help lists every table: owner, name, values, default', async () => {
   assert.match(help, /caster\.shaper\s+harfbuzz \| fontkit\s+default harfbuzz/);
   assert.match(help, /cicero\.composed\s+false \| true\s+default false/);
   assert.match(help, /beltype\.printer\s+caster \| chromium\s+default caster/);
-  assert.match(help, /beltype\.check\s+false \| true\s+default false/);
+  assert.match(help, /beltype\.check\s+false \| true \| report\s+default false/);
 });
 
 test('Chromium\'s print sheet for one page size, and the refusal for two', () => {

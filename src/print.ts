@@ -94,7 +94,7 @@ export async function print(input: string, output: string, options: PrintOptions
         for (const warning of printed.warnings) console.warn(typeof warning === 'string' ? warning : JSON.stringify(warning));
         for (const deferral of printed.deferred) console.warn(deferralLine(deferral));
       } else lap('print');
-      const { bytes, pages, words, screens } = printed;
+      const { bytes, pages, words, screens, confessions } = printed;
       step = 'close';
       await browser.close();
       lap('close');
@@ -106,7 +106,7 @@ export async function print(input: string, output: string, options: PrintOptions
       let check: CheckResult | undefined;
       if (flags.beltype.check) {
         step = 'check';
-        check = await checkPages(screens, bytes, path.resolve(output).replace(/\.pdf$/i, '') + '.check', flags.beltype.printer);
+        check = await checkPages(screens, bytes, path.resolve(output).replace(/\.pdf$/i, '') + '.check', flags.beltype.printer, confessions);
         lap('check');
       }
       return { output, pages, words, deferred: printed.deferred.length, ms: performance.now() - started, ...(check ? { check } : {}) };

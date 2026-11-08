@@ -16,7 +16,7 @@ import { BuildError } from '@beltype/common/errors';
 import { contentType } from '@beltype/common/mime';
 import { cutInPage, printInPage, reseatInPage, pageSizesInPage, chromiumSheetInPage, type CasterTrace, type Conformance, type Deferral, type Measure, type Refusal } from './in-page.ts';
 import { chromiumSheet } from './chromium.ts';
-import { screenshotPages } from './check.ts';
+import { screenshotPages, type Confession, type Shot } from './check.ts';
 
 /** `.invalid` is reserved (RFC 2606), so nothing on a network can ever answer it instead. */
 export const ORIGIN = 'https://print.invalid';
@@ -31,12 +31,12 @@ export type Missing = { add(entry: string): unknown };
 export type Assets = { files: Record<string, string>; dirs: Record<string, string> };
 
 /** The values a print runs under: Caster's given values (its defaults are resolved in the page), and Cicero's and the command line's resolved ones. */
-export type RunFlags = { caster: Record<string, unknown>; cicero: Record<string, unknown>; beltype: { printer: string; check: boolean } };
+export type RunFlags = { caster: Record<string, unknown>; cicero: Record<string, unknown>; beltype: { printer: string; check: boolean | string } };
 
 /** What {@link printOnPage} asks beyond the flags. `reseat` is the served document to write into the page's existing document in place of a navigation, for a page kept between prints. `progress` is told each step as it starts and each lap as it ends, for a trace. */
 export type RunOptions = { created?: string; reseat?: string; sharedWriter?: boolean; measures?: boolean; resumeAt?: unknown; progress?: { step(name: string): void; lap(key: string): void; cicero?(measures: Measure[]): void } };
 
-export type Printed = { bytes: Buffer; pages: number; words: number; warnings: unknown[]; deferred: Deferral[]; conformance: Conformance | null; caster: CasterTrace | null; cicero: Measure[]; screens: Uint8Array[]; printMs?: number };
+export type Printed = { bytes: Buffer; pages: number; words: number; warnings: unknown[]; deferred: Deferral[]; conformance: Conformance | null; caster: CasterTrace | null; cicero: Measure[]; screens: Shot[]; confessions: Confession[]; printMs?: number };
 
 /** The companions' built folders and files, each folder found from a module it exports: common exports no `package.json`. */
 export function documentAssets(): Assets {
@@ -135,7 +135,7 @@ export async function cutAndPrint(page: Page, missing: Set<string>, flags: RunFl
   const measures = 'refused' in cut ? [] : cut.measures;
   progress?.cicero?.(measures);
   if ('refused' in cut || missing.size) throw refusal(missing, 'refused' in cut ? cut : null);
-  let screens: Uint8Array[] = [];
+  let screens: Shot[] = [];
   if (flags.beltype.check) {
     progress?.step('check');
     screens = await screenshotPages(page);
@@ -146,11 +146,11 @@ export async function cutAndPrint(page: Page, missing: Set<string>, flags: RunFl
     const sheet = chromiumSheet(await page.evaluate(pageSizesInPage));
     await page.evaluate(chromiumSheetInPage, sheet);
     const bytes = await page.pdf({ preferCSSPageSize: true, printBackground: true });
-    return { bytes, pages: await page.locator('beltype-page').count(), words: 0, warnings: [], deferred: [], conformance: null, caster: null, cicero: measures, screens };
+    return { bytes, pages: await page.locator('beltype-page').count(), words: 0, warnings: [], deferred: [], conformance: null, caster: null, cicero: measures, screens, confessions: [] };
   }
   const printed = await page.evaluate(printInPage, { options: flags.caster, ...(o.created !== undefined ? { created: o.created } : {}), ...(o.sharedWriter ? { sharedWriter: true } : {}) });
   if ('refused' in printed) throw refusal(missing, printed);
-  return { bytes: Buffer.from(printed.base64, 'base64'), pages: printed.pages, words: printed.words, warnings: printed.warnings, deferred: printed.deferred, conformance: printed.conformance, caster: printed.caster, cicero: measures, screens, printMs: printed.printMs };
+  return { bytes: Buffer.from(printed.base64, 'base64'), pages: printed.pages, words: printed.words, warnings: printed.warnings, deferred: printed.deferred, conformance: printed.conformance, caster: printed.caster, cicero: measures, screens, confessions: printed.confessions, printMs: printed.printMs };
 }
 
 /** The run's refusal: what it could not answer comes first, because a missing file's name says more than the step it broke. */
