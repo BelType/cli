@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The print waits for Cicero's `settled()`.** The cut step ended on `run()`'s answer and `document.fonts.ready`, and Caster then read the pages, but a face the presented pages first ask for (the essay's `margin-boxes/content-001`: no body text, a face used only by margin boxes) is requested when the pages are laid out and arrives after the answer, is heard as a late fact and cuts the document again: Caster refused 'the pages were replaced while they were being printed' in 4 prints of 12 (logged: `loadingdone` 33 ms after the first run began, the second run 3 ms later when the print passed and 22 ms later when it was refused). `cutInPage` and `printInPage` now await `window.__beltypeCicero.settled()` (Cicero's SPEC XII.5, branch `fix/settled-promise`), which waits for the faces, the pictures and every resume they cause. The reproduction, ten prints on the branch pair: 0 refused. `test/settled.test.ts` holds that the print awaits `settled()` (the document wraps it, and the file carries the title the wrap set) and that twelve prints of such a document refuse none; the second is timing-dependent and was green on the unfixed pair, so only the first is red on 0.1.9. Needs the Cicero release that carries `settled()`; until the pin moves, the sentences above are the branch's.
+
 ## 0.1.9 — 2026-11-08
 
 - **Cicero 0.1.11.** The pin moves from Cicero 0.1.10, under which a paragraph cut at a hyphen the browser drew (`hyphens: auto`) was refused by Caster: the first piece's last word read `conse‐`, matched no run of its source, and 749 characters of the Quiet Press counted as presented on no page (Cicero's Codeberg issue 14). 0.1.8 carries the fault; 0.1.11 writes the hyphen as an engine text node before a break mark.
