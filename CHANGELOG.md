@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Cicero 0.1.11.** The pin moves from Cicero 0.1.10, under which a paragraph cut at a hyphen the browser drew (`hyphens: auto`) was refused by Caster: the first piece's last word read `conse‐`, matched no run of its source, and 749 characters of the Quiet Press counted as presented on no page (Cicero's Codeberg issue 14). 0.1.8 carries the fault; 0.1.11 writes the hyphen as an engine text node before a break mark.
 - **A refused print leaves no file.** `beltype print` removes the output as the run starts, so a print that refuses no longer leaves an earlier PDF at that path to stand for it. Proved by `test/small-rows.test.ts`.
 - **`beltype print` says the standard its file claims.** The summary line ends with Caster's claim, `pdf-2.0; pdf-ua-2` or `pdf-2.0`, as `beltype serve` already sends it in `x-beltype-standard`; `print()` returns it as `standard`. Under `--printer chromium` Caster never saw the file and the line says nothing. Proved by `test/small-rows.test.ts`.
 - **A symlink cannot pull a file from outside the document's folder.** The folder test was lexical while the file test followed links, so a link inside the folder served what it pointed at. Both sides are now resolved to where they land, and a link that stays inside still serves. Proved by `test/small-rows.test.ts`.

@@ -12,8 +12,8 @@ importers:
         specifier: 0.2.5
         version: 0.2.5
       '@beltype/cicero':
-        specifier: 0.1.10
-        version: 0.1.10
+        specifier: 0.1.11
+        version: 0.1.11
       '@beltype/common':
         specifier: 0.1.2
         version: 0.1.2
@@ -52,8 +52,8 @@ packages:
     resolution: {integrity: sha512-fWRrmAPKGll5igIrVirC+XaE6S3lKJVAqKf7TjTiWTcq4ZXZImdFHKAYvh8x+z9/hO2vloS0UV8bunkdjojOLQ==}
     engines: {node: '>=22'}
 
-  '@beltype/cicero@0.1.10':
-    resolution: {integrity: sha512-P/ROeFC8JScitPS/J4psD/CKZIg1NuIFuvrWyGzpjCRmb+yjkyJxhdWubbeBW35+i+GB6W3cdTkBmDIxD8xTQQ==}
+  '@beltype/cicero@0.1.11':
+    resolution: {integrity: sha512-EVz2rDQBq4URg4WduwgYYXMpU7JkgxDQt0Y48RRmLA/XQg7TjJ+Tno3Rvvs1ROy2/6VrTpEGuzaUhk3FMubCmg==}
     engines: {node: '>=22'}
 
   '@beltype/common@0.1.2':
@@ -578,7 +578,7 @@ snapshots:
     dependencies:
       '@beltype/common': 0.1.2
 
-  '@beltype/cicero@0.1.10':
+  '@beltype/cicero@0.1.11':
     dependencies:
       '@beltype/common': 0.1.2
       css-tree: 3.2.1
