@@ -34,17 +34,28 @@ export interface PageDiff {
   readonly sameSize: boolean;
   readonly width: number;
   readonly height: number;
+  /** The tile whose share of differing pixels is the highest, by its top-left corner in the picture; a tile cut by the edge is counted against at least a quarter of a tile. */
+  readonly tile: { readonly share: number; readonly x: number; readonly y: number };
   /** The differing pixels in red over a faded copy of the reference, as a PNG. */
   readonly image: Uint8Array;
 }
 
-/** Draw every page of a PDF. */
-export function rasterize(pdf: Uint8Array, dpi = 96): { pages: Raster[]; pngs: Uint8Array[] } {
+/**
+ * Draw every page of a PDF; `origins` is where each page's user-space origin falls in its picture, in pixels.
+ *
+ * @remarks
+ * The presented page sits on the origin, its bottom-left corner there: Chromium's media is `[0 0 w h]`, and Caster grows its media round the page for a bleed and print marks (`[-31.181 -31.181 371.338 371.338]` on Caster's `roads`) and writes no `/TrimBox`, so the origin is where the trim is found.
+ */
+export function rasterize(pdf: Uint8Array, dpi = 96): { pages: Raster[]; pngs: Uint8Array[]; origins: { x: number; y: number }[] } {
   const doc = mupdf.Document.openDocument(pdf, 'application/pdf');
   const pages: Raster[] = [];
   const pngs: Uint8Array[] = [];
+  const origins: { x: number; y: number }[] = [];
   for (let i = 0; i < doc.countPages(); i++) {
-    const pix = doc.loadPage(i).toPixmap(mupdf.Matrix.scale(dpi / 72, dpi / 72), mupdf.ColorSpace.DeviceRGB, false);
+    const page = doc.loadPage(i);
+    const t = (page as mupdf.PDFPage).getTransform();
+    origins.push({ x: t[4] * dpi / 72, y: t[5] * dpi / 72 });
+    const pix = page.toPixmap(mupdf.Matrix.scale(dpi / 72, dpi / 72), mupdf.ColorSpace.DeviceRGB, false);
     const width = pix.getWidth();
     const height = pix.getHeight();
     const n = pix.getNumberOfComponents();
@@ -55,7 +66,16 @@ export function rasterize(pdf: Uint8Array, dpi = 96): { pages: Raster[]; pngs: U
     pages.push({ width, height, rgb });
     pngs.push(pix.asPNG());
   }
-  return { pages, pngs };
+  return { pages, pngs, origins };
+}
+
+/** The `width` by `height` window of `r` whose top-left corner is (x, y), clipped to `r`. */
+export function crop(r: Raster, x: number, y: number, width: number, height: number): Raster {
+  const x0 = Math.max(0, Math.min(x, r.width)), y0 = Math.max(0, Math.min(y, r.height));
+  const w = Math.min(width, r.width - x0), h = Math.min(height, r.height - y0);
+  const rgb = new Uint8Array(w * h * 3);
+  for (let row = 0; row < h; row++) rgb.set(r.rgb.subarray(((y0 + row) * r.width + x0) * 3, ((y0 + row) * r.width + x0 + w) * 3), row * w * 3);
+  return { width: w, height: h, rgb };
 }
 
 /** Whether the pixel at (x, y) of `from` is within the threshold of any pixel of `to` within {@link NEIGHBOURHOOD} of (x, y), clipped at the edges. */
@@ -75,11 +95,13 @@ function matched(from: Raster, to: Raster, x: number, y: number, width: number, 
   return false;
 }
 
-/** Compare two pages over their common area; the picture is that area, the reference faded and the pixels that still differ after the slip red. */
-export function diffPage(ref: Raster, other: Raster): PageDiff {
+/** Compare two pages over their common area, read in `tile`-pixel squares; the picture is that area, the reference faded and the pixels that still differ after the slip red. */
+export function diffPage(ref: Raster, other: Raster, tile = 24): PageDiff {
   const width = Math.min(ref.width, other.width);
   const height = Math.min(ref.height, other.height);
   const out = new Uint8Array(width * height * 3);
+  const across = Math.ceil(width / tile);
+  const tiles = new Uint32Array(across * Math.ceil(height / tile));
   let differing = 0;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -87,6 +109,7 @@ export function diffPage(ref: Raster, other: Raster): PageDiff {
       const o = (y * width + x) * 3;
       if (!matched(other, ref, x, y, width, height) || !matched(ref, other, x, y, width, height)) {
         differing++;
+        tiles[Math.floor(y / tile) * across + Math.floor(x / tile)]!++;
         out[o] = 255;
         out[o + 1] = 0;
         out[o + 2] = 0;
@@ -95,7 +118,13 @@ export function diffPage(ref: Raster, other: Raster): PageDiff {
   }
   const pix = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, width, height], false);
   pix.getPixels().set(out);
-  return { share: width * height ? differing / (width * height) : 0, sameSize: ref.width === other.width && ref.height === other.height, width, height, image: pix.asPNG() };
+  let worst = { share: 0, x: 0, y: 0 };
+  tiles.forEach((n, i) => {
+    const x = (i % across) * tile, y = Math.floor(i / across) * tile;
+    const share = n / Math.max((Math.min(x + tile, width) - x) * (Math.min(y + tile, height) - y), tile * tile / 4);
+    if (share > worst.share) worst = { share, x, y };
+  });
+  return { share: width * height ? differing / (width * height) : 0, sameSize: ref.width === other.width && ref.height === other.height, width, height, tile: worst, image: pix.asPNG() };
 }
 
 export interface PairDiff {
@@ -107,8 +136,8 @@ export interface PairDiff {
 }
 
 /** Compare two page lists page by page. */
-export function diffPages(ref: readonly Raster[], other: readonly Raster[]): PairDiff {
+export function diffPages(ref: readonly Raster[], other: readonly Raster[], tile = 24): PairDiff {
   const n = Math.min(ref.length, other.length);
-  const pages = Array.from({ length: n }, (_, i) => diffPage(ref[i]!, other[i]!));
+  const pages = Array.from({ length: n }, (_, i) => diffPage(ref[i]!, other[i]!, tile));
   return { pages, unmatched: Math.abs(ref.length - other.length), mean: n ? pages.reduce((s, p) => s + p.share, 0) / n : 0 };
 }

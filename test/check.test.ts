@@ -9,7 +9,7 @@ import { specimen } from '@beltype/specimens';
 import * as mupdf from 'mupdf';
 import { BuildError } from '@beltype/common/errors';
 import { print } from '../src/print.ts';
-import { checkPages, gate, MAX_SHARE } from '../src/check.ts';
+import { checkPages, gate, MAX_SHARE, TILE, TILE_FLOORS, type Shot } from '../src/check.ts';
 import { cliFlags } from '../src/flags.ts';
 
 const SAMPLE = specimen('paper').entry;
@@ -49,6 +49,17 @@ function pages(n: number): { pdf: Uint8Array; pngs: Uint8Array[] } {
   return { pdf, pngs };
 }
 
+/** The pages as the screen hands them over, each of one kind. */
+const shots = (pngs: Uint8Array[], kind: Shot['kind'] = 'text'): Shot[] => pngs.map((png) => ({ png, kind }));
+
+/** The PNG with a `w` by `h` block of `rgb` painted at (x, y). */
+function painted(png: Uint8Array, x0: number, y0: number, w: number, h: number, rgb: [number, number, number] = [255, 0, 0]): Uint8Array {
+  const pix = new mupdf.Image(png).toPixmap();
+  const n = pix.getNumberOfComponents(), stride = pix.getStride(), px = pix.getPixels();
+  for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) for (let c = 0; c < 3; c++) px[y * stride + x * n + c] = rgb[c]!;
+  return pix.asPNG();
+}
+
 /** The PNG with a black block over `share` of its area painted into its top left. */
 function blocked(png: Uint8Array, share: number): Uint8Array {
   const pix = new mupdf.Image(png).toPixmap();
@@ -62,7 +73,7 @@ const scratch = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'beltype-g
 
 test('the gate: pages all under the threshold pass, and the run goes on', async () => {
   const { pdf, pngs } = pages(2);
-  const r = await checkPages(pngs, pdf, scratch(), 'caster');
+  const r = await checkPages(shots(pngs), pdf, scratch(), 'caster');
   assert.ok(r.pages.every((p) => p.pass));
   assert.doesNotThrow(() => gate(r, true));
 });
@@ -70,7 +81,7 @@ test('the gate: pages all under the threshold pass, and the run goes on', async 
 test('the gate: one page over the threshold fails the run, naming the page, its share and its picture; the report is written all the same', async () => {
   const { pdf, pngs } = pages(3);
   const dir = scratch();
-  const r = await checkPages([pngs[0]!, blocked(pngs[1]!, MAX_SHARE * 2), pngs[2]!], pdf, dir, 'caster');
+  const r = await checkPages(shots([pngs[0]!, blocked(pngs[1]!, MAX_SHARE * 2), pngs[2]!]), pdf, dir, 'caster');
   assert.deepEqual(r.pages.map((p) => p.pass), [true, false, true]);
   assert.throws(() => gate(r, true), (e: unknown) => e instanceof BuildError && new RegExp(`^check page 2 fails: \\d+\\.\\d\\d% differ, over 3\\.5%; ${dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/diff-2\\.png$`).test(e.message));
   const written = JSON.parse(fs.readFileSync(path.join(dir, 'check.json'), 'utf8'));
@@ -81,7 +92,7 @@ test('the gate: one page over the threshold fails the run, naming the page, its 
 test('--check=report: the same page over the threshold leaves the run alone and the report written', async () => {
   const { pdf, pngs } = pages(1);
   const dir = scratch();
-  const r = await checkPages([blocked(pngs[0]!, MAX_SHARE * 2)], pdf, dir, 'caster');
+  const r = await checkPages(shots([blocked(pngs[0]!, MAX_SHARE * 2)]), pdf, dir, 'caster');
   assert.equal(r.pages[0]!.pass, false);
   assert.doesNotThrow(() => gate(r, 'report'));
   assert.ok(fs.existsSync(path.join(dir, 'check.json')) && fs.existsSync(path.join(dir, 'diff-1.png')));
@@ -91,7 +102,67 @@ test('--check=report: the same page over the threshold leaves the run alone and 
 
 test('the gate: a page count that differs between screen and print fails the run', async () => {
   const { pdf, pngs } = pages(2);
-  const r = await checkPages([pngs[0]!], pdf, scratch(), 'caster');
+  const r = await checkPages(shots([pngs[0]!]), pdf, scratch(), 'caster');
   assert.ok(r.pages.every((p) => p.pass));
   assert.throws(() => gate(r, true), (e: unknown) => e instanceof BuildError && /^check fails: the screen has 1 pages and the print 2; .*doc\.check$/.test(e.message));
+});
+
+const escaped = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+test('the tile gate: the 120 by 30 px block of Caster\'s acceptance suite passes the share and fails a tile, named where it is', async () => {
+  const { pdf, pngs } = pages(1);
+  const dir = scratch();
+  const r = await checkPages(shots([painted(pngs[0]!, 300, 340, 120, 30)]), pdf, dir, 'caster');
+  const p = r.pages[0]!;
+  assert.ok(p.share < MAX_SHARE, `share ${p.share}`);
+  // a block 30 px tall covers at least 15 of some tile's 24 rows wherever it falls, and 120 px wide covers whole tiles across
+  assert.ok(p.tile.share >= 15 / 24, `tile ${p.tile.share}`);
+  assert.equal(p.kind, 'text');
+  assert.equal(p.pass, false);
+  assert.throws(() => gate(r, true), (e: unknown) => e instanceof BuildError && new RegExp(`^check page 1 fails: tile at \\(\\d+, \\d+\\) differs \\d+%, over the ${TILE_FLOORS.text * 100}% floor for a text page; ${escaped(dir)}/diff-1\\.png$`).test(e.message));
+  assert.doesNotThrow(() => gate(r, 'report'));
+  const written = JSON.parse(fs.readFileSync(path.join(dir, 'check.json'), 'utf8'));
+  assert.deepEqual(Object.keys(written.pages[0].tile).sort(), ['share', 'x', 'y']);
+  assert.equal(written.pages[0].kind, 'text');
+});
+
+test('the tile gate: a clean text page and a clean picture page pass, and a tile over the floor fails either, naming its kind', async () => {
+  const { pdf, pngs } = pages(2);
+  const clean = await checkPages([{ png: pngs[0]!, kind: 'text' }, { png: pngs[1]!, kind: 'picture' }], pdf, scratch(), 'caster');
+  assert.deepEqual(clean.pages.map((p) => p.pass), [true, true]);
+  assert.deepEqual(clean.pages.map((p) => p.kind), ['text', 'picture']);
+  const rows = Math.ceil(TILE_FLOORS.picture * TILE) + 1;
+  const over = (png: Uint8Array) => painted(png, TILE * 10, TILE * 10, TILE, rows, [0, 0, 0]);
+  const dir = scratch();
+  const r = await checkPages([{ png: over(pngs[0]!), kind: 'text' }, { png: over(pngs[1]!), kind: 'picture' }], pdf, dir, 'caster');
+  assert.deepEqual(r.pages.map((p) => p.pass), [false, false]);
+  assert.deepEqual([r.pages[1]!.tile.x, r.pages[1]!.tile.y], [TILE * 10, TILE * 10]);
+  assert.throws(() => gate(r, true), (e: unknown) => e instanceof BuildError && e.message.split('\n')[1] === `check page 2 fails: tile at (240, 240) differs ${Math.round(rows / TILE * 100)}%, over the 40% floor for a picture page; ${dir}/diff-2.png`);
+});
+
+test('the share gate still holds: a page drawn blank fails on its share', async () => {
+  const doc = new mupdf.PDFDocument();
+  doc.insertPage(-1, doc.addPage([0, 0, 595.28, 841.89], 0, {}, '0.2 g 72 72 451 600 re f'));
+  const pdf = doc.saveToBuffer('').asUint8Array().slice();
+  const { pngs } = pages(1);
+  const blank = painted(pngs[0]!, 0, 0, 794, 1122, [255, 255, 255]);
+  const r = await checkPages(shots([blank]), pdf, scratch(), 'caster');
+  assert.ok(r.pages[0]!.share > MAX_SHARE);
+  assert.throws(() => gate(r, true), /check page 1 fails: \d+\.\d\d% differ, over 3\.5%/);
+});
+
+test('a bled page is aligned on the trim: the print\'s media grows round the presented page, which sits at the origin, and the two compare at one size', async () => {
+  const content = '0.5 g 40 200 260 40 re f 0 g 20 20 300 2 re f';
+  const marks = '0 g 0.5 w -31 0 m -8 0 l S 0 -31 m 0 -8 l S 371 340.157 m 348 340.157 l S 340.157 371 m 340.157 348 l S';
+  const bled = new mupdf.PDFDocument();
+  bled.insertPage(-1, bled.addPage([-31.181, -31.181, 371.338, 371.338], 0, {}, `${content} ${marks}`));
+  const pdf = bled.saveToBuffer('').asUint8Array().slice();
+  const trim = new mupdf.PDFDocument();
+  trim.insertPage(-1, trim.addPage([0, 0, 340.157, 340.157], 0, {}, content));
+  const screen = mupdf.Document.openDocument(trim.saveToBuffer('').asUint8Array().slice(), 'application/pdf').loadPage(0).toPixmap(mupdf.Matrix.scale(96 / 72, 96 / 72), mupdf.ColorSpace.DeviceRGB, false).asPNG();
+  const r = await checkPages(shots([screen]), pdf, scratch(), 'caster');
+  const p = r.pages[0]!;
+  assert.ok(p.share < MAX_SHARE && p.tile.share <= TILE_FLOORS.text, `share ${p.share}, tile ${p.tile.share}`);
+  assert.equal(p.sameSize, true);
+  assert.doesNotThrow(() => gate(r, true));
 });

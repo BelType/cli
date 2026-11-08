@@ -16,7 +16,7 @@ import { BuildError } from '@beltype/common/errors';
 import { contentType } from '@beltype/common/mime';
 import { cutInPage, printInPage, reseatInPage, pageSizesInPage, chromiumSheetInPage, type CasterTrace, type Conformance, type Deferral, type Measure, type Refusal } from './in-page.ts';
 import { chromiumSheet } from './chromium.ts';
-import { screenshotPages } from './check.ts';
+import { screenshotPages, type Shot } from './check.ts';
 
 /** `.invalid` is reserved (RFC 2606), so nothing on a network can ever answer it instead. */
 export const ORIGIN = 'https://print.invalid';
@@ -36,7 +36,7 @@ export type RunFlags = { caster: Record<string, unknown>; cicero: Record<string,
 /** What {@link printOnPage} asks beyond the flags. `reseat` is the served document to write into the page's existing document in place of a navigation, for a page kept between prints. `progress` is told each step as it starts and each lap as it ends, for a trace. */
 export type RunOptions = { created?: string; reseat?: string; sharedWriter?: boolean; measures?: boolean; resumeAt?: unknown; progress?: { step(name: string): void; lap(key: string): void; cicero?(measures: Measure[]): void } };
 
-export type Printed = { bytes: Buffer; pages: number; words: number; warnings: unknown[]; deferred: Deferral[]; conformance: Conformance | null; caster: CasterTrace | null; cicero: Measure[]; screens: Uint8Array[]; printMs?: number };
+export type Printed = { bytes: Buffer; pages: number; words: number; warnings: unknown[]; deferred: Deferral[]; conformance: Conformance | null; caster: CasterTrace | null; cicero: Measure[]; screens: Shot[]; printMs?: number };
 
 /** The companions' built folders and files, each folder found from a module it exports: common exports no `package.json`. */
 export function documentAssets(): Assets {
@@ -135,7 +135,7 @@ export async function cutAndPrint(page: Page, missing: Set<string>, flags: RunFl
   const measures = 'refused' in cut ? [] : cut.measures;
   progress?.cicero?.(measures);
   if ('refused' in cut || missing.size) throw refusal(missing, 'refused' in cut ? cut : null);
-  let screens: Uint8Array[] = [];
+  let screens: Shot[] = [];
   if (flags.beltype.check) {
     progress?.step('check');
     screens = await screenshotPages(page);
