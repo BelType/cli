@@ -31,7 +31,7 @@ export async function cutInPage(run: { cicero: Record<string, unknown>; measures
     const cicero = (window as any).__beltypeCicero;
     if (!cicero?.run) return { refused: 'the document loaded no Cicero client, so there is nothing to paginate with', at };
     const answer = await cicero.run(run.resumeAt ? { ...run.cicero, resumeAt: run.resumeAt } : run.cicero);
-    await document.fonts.ready;
+    await cicero.settled(); // not `run()`'s answer: a face the presented pages ask for arrives after it and cuts the document again (Cicero's SPEC XII.5)
     const measures = run.measures ? performance.getEntriesByType('measure').filter((m) => m.name.startsWith('cicero:')).map((m) => ({ name: m.name, ms: Math.round(m.duration * 100) / 100, detail: (m as PerformanceMeasure).detail ?? null })) : [];
     return { pages: answer.pages, measures };
   } catch (error) {
@@ -86,6 +86,7 @@ export async function printInPage(run: { options: Record<string, unknown>; creat
     // @ts-expect-error a URL the page resolves, not a module the checker can find. A literal on purpose: a computed `import()` is wrapped by `rewriteRelativeImportExtensions` in a helper the page does not have.
     const caster = await import('/_beltype/caster/src/index.js');
     const formePort = run.sharedWriter ? new SharedWorker(caster.formeSharedWorkerUrl(), { type: 'module', name: 'forme' }).port : undefined;
+    await (window as any).__beltypeCicero?.settled?.(); // the printer waits: Caster refuses pages that were replaced while it read them
     const printed = await caster.print({ document, ...(run.created !== undefined ? { created: run.created } : {}), ...(formePort ? { formePort } : {}) }, run.options);
     const printMs = performance.now() - t0;
     const bytes: Uint8Array = printed.bytes;
