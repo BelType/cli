@@ -12,7 +12,7 @@ import { print } from '../src/print.ts';
 const FONTS = path.join(path.dirname(specimen('paper').entry), 'fonts');
 const MAIN = path.join(import.meta.dirname, '..', 'src', 'main.ts');
 
-const page = (head = '', body = 'Words.') => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>T</title><style>
+const page = (head = '', body = '<p>Words.</p>') => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>T</title><style>
 @font-face { font-family: "Source Serif 4"; src: url("fonts/SourceSerif4-Variable.woff2") format("woff2"); font-weight: 200 900; }
 @page { size: A5; margin: 20mm; }
 body { font: 12pt/1.4 "Source Serif 4"; }

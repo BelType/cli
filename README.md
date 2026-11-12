@@ -63,7 +63,7 @@ Its fonts, Source Serif 4 and Source Sans 3, are under the SIL Open Font License
 
 Found while writing the sample, and left out of it until the companions print it:
 
-- SVG text under `transform="rotate(…)"`: Caster draws it upright and unrotated, each word set apart at its own place, where the screen and `--printer chromium` draw the line turned.
+- An inline element standing directly in `<body>`, such as an `<svg>` with no block around it: its room is kept and it is drawn on no page, under both printers and with no message. Wrap it in a block (a `<figure>`). Text standing directly in `<body>` refuses the print by its words.
 
 ## Requirements
 
@@ -73,7 +73,7 @@ Node 22 or later, and Playwright's headless shell for `playwright-core` 1.63.0:
 npx playwright-core@1.63.0 install chromium-headless-shell
 ```
 
-The companions come from npm, pinned exactly: `@beltype/cicero` 0.1.11, `@beltype/caster` 0.2.5 and `@beltype/common` 0.1.2.
+The companions come from npm, pinned exactly: `@beltype/cicero` 0.1.12, `@beltype/caster` 0.2.7 and `@beltype/common` 0.1.2.
 
 The package is a binary, not a module: it has no `exports` map and ships no typings, so `import '@beltype/cli'` is not a supported road until a consumer asks for one.
 
