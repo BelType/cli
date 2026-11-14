@@ -63,7 +63,7 @@ Its fonts, Source Serif 4 and Source Sans 3, are under the SIL Open Font License
 
 Found while writing the sample, and left out of it until the companions print it:
 
-- An inline element standing directly in `<body>`, such as an `<svg>` with no block around it: its room is kept and it is drawn on no page, under both printers and with no message. Wrap it in a block (a `<figure>`). Text standing directly in `<body>` refuses the print by its words.
+- Content standing directly in `<body>` that is not a block: text with no element around it, an inline-level element such as an `<svg>` or an `<img>` with no block around it, and a box with `display: contents`. The print is refused by name under both printers, saying what was found. Put it inside a block (a `<p>`, a `<figure>`), or give the element `display: block`. A `<br>` between two blocks is passed over.
 
 ## Requirements
 

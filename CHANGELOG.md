@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.11 — 2026-11-14
+
+- **Pins to Cicero 0.1.14.** Text, an inline-level box and a `display: contents` box standing directly in `<body>` now refuse the print by name, under both printers, where the text was refused only by Caster and the other two were drawn on no page wherever a page ended at them, with no message. Printed 2026-11-14: a document of each kind refuses with Cicero's message at the paginate step, and one with the `<svg>` inside a `<figure>` and a `<br>` between blocks prints. 0.1.13's two new names on Cicero's fragmentation face change nothing here. The README's line on what is not printed says so.
+
 ## 0.1.10 — 2026-11-12
 
 - **Pins to Cicero 0.1.12 and Caster 0.2.7.** Cicero: named pages switch at css-page-3's start and end values, a float's forced breaks fall at its place, no trailing page after a width change, counters close at the page's depth, a tall avoided row, a tall end padding and an `<object>`'s copy no longer refuse the document, and a cell spanning rows at a cut is divided with the rows beside it. Caster: text standing directly in `<body>` refuses the print by its words, where 0.2.5 wrote a file without it; no CMYK profile is shipped; SVG text under a rotating transform turns with it; an `<object>` showing its fallback prints the fallback. Printed 2026-11-12 under the pair: the Trattato specimen is 179 pages and 46 299 words under both printers, and a figure with SVG text under `rotate(-30)` and `rotate(90)` reads the same under both, so the README drops that line from *What is not printed yet*. It gains one found by the same print: an inline `<svg>` standing directly in `<body>` keeps its room and is drawn on no page, under both printers, as it was under Cicero 0.1.11. `test/small-rows.test.ts` wraps its default text in a paragraph, since the bare text it printed is now refused.
