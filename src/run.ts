@@ -14,7 +14,7 @@ import type { BrowserContext, Page } from 'playwright-core';
 import { ciceroEngine } from '@beltype/cicero/engine';
 import { BuildError } from '@beltype/common/errors';
 import { contentType } from '@beltype/common/mime';
-import { cutInPage, printInPage, reseatInPage, pageSizesInPage, chromiumSheetInPage, type CasterTrace, type Conformance, type Deferral, type Measure, type Refusal } from './in-page.ts';
+import { cutInPage, printInPage, reseatInPage, pageSizesInPage, chromiumSheetInPage, type CasterTrace, type Conformance, type Deferral, type InPageParts, type Measure, type Refusal } from './in-page.ts';
 import { chromiumSheet } from './chromium.ts';
 import { screenshotPages, type Confession, type Shot } from './check.ts';
 
@@ -36,7 +36,10 @@ export type RunFlags = { caster: Record<string, unknown>; cicero: Record<string,
 /** What {@link printOnPage} asks beyond the flags. `reseat` is the served document to write into the page's existing document in place of a navigation, for a page kept between prints. `progress` is told each step as it starts and each lap as it ends, for a trace. */
 export type RunOptions = { created?: string; reseat?: string; sharedWriter?: boolean; measures?: boolean; resumeAt?: unknown; progress?: { step(name: string): void; lap(key: string): void; cicero?(measures: Measure[]): void } };
 
-export type Printed = { bytes: Buffer; pages: number; words: number; warnings: unknown[]; deferred: Deferral[]; conformance: Conformance | null; caster: CasterTrace | null; cicero: Measure[]; screens: Shot[]; confessions: Confession[]; printMs?: number };
+export type Printed = { bytes: Buffer; pages: number; words: number; warnings: unknown[]; deferred: Deferral[]; conformance: Conformance | null; caster: CasterTrace | null; cicero: Measure[]; screens: Shot[]; confessions: Confession[]; printMs?: number; parts?: PrintParts };
+
+/** Where Caster's print step went, in milliseconds: {@link InPageParts}' four, then `cross`, the `evaluate` call's time beyond the page's own (the call and the answer's base64 serialised, carried over the protocol and parsed), and `decode`, the base64 back to bytes in node. */
+export type PrintParts = { ready: number; settled: number; caster: number; encode: number; cross: number; decode: number };
 
 /** The companions' built folders and files, each folder found from a module it exports: common exports no `package.json`. */
 export function documentAssets(): Assets {
@@ -148,9 +151,13 @@ export async function cutAndPrint(page: Page, missing: Set<string>, flags: RunFl
     const bytes = await page.pdf({ preferCSSPageSize: true, printBackground: true });
     return { bytes, pages: await page.locator('beltype-page').count(), words: 0, warnings: [], deferred: [], conformance: null, caster: null, cicero: measures, screens, confessions: [] };
   }
+  const sent = performance.now();
   const printed = await page.evaluate(printInPage, { options: flags.caster, ...(o.created !== undefined ? { created: o.created } : {}), ...(o.sharedWriter ? { sharedWriter: true } : {}) });
+  const back = performance.now();
   if ('refused' in printed) throw refusal(missing, printed);
-  return { bytes: Buffer.from(printed.base64, 'base64'), pages: printed.pages, words: printed.words, warnings: printed.warnings, deferred: printed.deferred, conformance: printed.conformance, caster: printed.caster, cicero: measures, screens, confessions: printed.confessions, printMs: printed.printMs };
+  const bytes = Buffer.from(printed.base64, 'base64');
+  const { page: inPage, ...parts } = printed.parts;
+  return { bytes, pages: printed.pages, words: printed.words, warnings: printed.warnings, deferred: printed.deferred, conformance: printed.conformance, caster: printed.caster, cicero: measures, screens, confessions: printed.confessions, printMs: printed.printMs, parts: { ...parts, cross: back - sent - inPage, decode: performance.now() - back } };
 }
 
 /** The run's refusal: what it could not answer comes first, because a missing file's name says more than the step it broke. */

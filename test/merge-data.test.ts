@@ -11,6 +11,7 @@ import { writeMicrodata } from 'prosemirror-stores/microdata';
 import { specimen } from '@beltype/specimens';
 import { serve, WARMUP_FONT } from '../src/serve.ts';
 import type { Cell } from '../src/merge-tab.ts';
+import { timing, wholeHoldsParts } from './server-timing.ts';
 
 const CREATED = '2026-11-07T00:00:00.000Z';
 const BILL = specimen('bolletta').dir;
@@ -113,6 +114,22 @@ test('every customer from data is the folder route PDF, byte for byte, in any or
     assert.ok(pdf.equals(folder[k]!), `customer ${k} differs from the folder route`);
   }
   assert.deepEqual(roads(), ['merge seated', ...order.slice(1).map(() => 'merge kept')]);
+});
+
+test('Server-Timing on the data route: the first customer seats the template, the second keeps it, the parts within the whole', async () => {
+  const template = await upload(billForm(TEMPLATE));
+  await bytes(await fetch(`${server.url}/print`, { method: 'POST', body: billForm(mergedHtml(customers[0]!)) }));
+  const roads: string[] = [];
+  for (const c of customers.slice(0, 2)) {
+    const res = await printData(template, { ...c, created: CREATED });
+    await bytes(res);
+    const metrics = timing(res.headers.get('server-timing'));
+    roads.push(metrics[0]!.desc!);
+    const names = metrics.filter((m) => !/^(print|caster)-/.test(m.name)).map((m) => m.name);
+    assert.deepEqual(names, roads.length === 1 ? ['road', 'read', 'queue', 'page', 'load', 'merge', 'cut', 'print', 'total'] : ['road', 'read', 'queue', 'page', 'merge', 'cut', 'print', 'total']);
+    wholeHoldsParts(metrics);
+  }
+  assert.deepEqual(roads, ['merge seated', 'merge kept']);
 });
 
 test('a folder print between two customers seats the template again', async () => {

@@ -10,6 +10,7 @@ import { specimen } from '@beltype/specimens';
 import { ValidationError } from '@beltype/common/errors';
 import { print } from '../src/print.ts';
 import { serve, keptRoad, WARMUP, WARMUP_FONT } from '../src/serve.ts';
+import { timing, wholeHoldsParts } from './server-timing.ts';
 
 const SAMPLE = specimen('paper').entry;
 const FOLDER = path.dirname(SAMPLE);
@@ -65,6 +66,20 @@ for (const writer of ['pdf-lib', 'forme']) {
     assert.equal((await health()).prints, before + 1);
   });
 }
+
+test('Server-Timing: a metric a step, in order, the parts within the whole, and the road kept on a kept page', async () => {
+  for (let i = 0; i < 2; i++) {
+    const res = await post(server.url, { 'caster.writer': 'forme' });
+    assert.equal(res.status, 200, await res.clone().text());
+    await res.arrayBuffer();
+    const metrics = timing(res.headers.get('server-timing'));
+    assert.deepEqual(metrics[0], { name: 'road', desc: 'kept' });
+    assert.ok(!metrics.some((m) => m.name === 'worker'), 'one worker names none');
+    const names = metrics.filter((m) => !/^(print|caster)-/.test(m.name)).map((m) => m.name);
+    assert.deepEqual(names, ['road', 'read', 'queue', 'folder', 'page', 'load', 'cut', 'print', 'total']);
+    wholeHoldsParts(metrics);
+  }
+});
 
 test('a print under caster.standard=none says it claims PDF 2.0 alone', async () => {
   const res = await fetch(`${server.url}/print`, { method: 'POST', body: paperForm({ 'caster.standard': 'none' }) });
@@ -140,6 +155,9 @@ test('two workers: two prints at once run together, each the file one worker giv
   const { s, lines } = await own({ workers: 2 });
   const [a, b] = await Promise.all([post(s.url), post(s.url)]);
   assert.deepEqual([a!.status, b!.status], [200, 200]);
+  assert.deepEqual([a!, b!].map((r) => timing(r.headers.get('server-timing')).find((m) => m.name === 'worker')?.desc).sort(), ['1', '2']);
+  // The second waited for no one: each had a worker of its own.
+  for (const r of [a!, b!]) assert.ok(timing(r.headers.get('server-timing')).find((m) => m.name === 'queue')!.dur! < 50);
   const one = Buffer.from(await (await post(server.url)).arrayBuffer());
   for (const r of [a!, b!]) assert.ok(Buffer.from(await r.arrayBuffer()).equals(one));
   // The second began before the first ended, and on the other worker.
@@ -291,7 +309,11 @@ test('a document with a script of its own takes a page of its own, the log says 
   const { s, lines } = await own({});
   const withScript = paperForm({ created: CREATED }, 'index.html');
   withScript.append('index.html', new Blob([fs.readFileSync(SAMPLE, 'utf8').replace('</body>', '<script>document.title = "scripted";</script></body>')]), 'index.html');
-  assert.equal((await fetch(`${s.url}/print`, { method: 'POST', body: withScript })).status, 200);
+  const fresh = await fetch(`${s.url}/print`, { method: 'POST', body: withScript });
+  assert.equal(fresh.status, 200);
+  const metrics = timing(fresh.headers.get('server-timing'));
+  assert.deepEqual(metrics[0], { name: 'road', desc: 'fresh' });
+  assert.ok(metrics.some((m) => m.name === 'close'), 'a page of its own is closed, and timed');
   assert.equal((await post(s.url)).status, 200);
   const roads = lines.filter((l) => / road /.test(l)).map((l) => /road (\w+)/.exec(l)![1]);
   assert.deepEqual(roads.slice(-2), ['fresh', 'kept']);

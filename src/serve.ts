@@ -62,6 +62,28 @@ const lapper = (steps: Record<string, number>) => {
   return { start: (name: string) => { began[name] = performance.now(); }, end: (name: string) => { steps[name] = performance.now() - (began[name] ?? performance.now()); } };
 };
 
+/** One metric of `Server-Timing` (RFC 9110's token for a name), its milliseconds to a tenth. */
+const metric = (name: string, ms: number) => `${name.replace(/[^\w!#$%&'*+.^`|~-]/g, '-')};dur=${Math.round(ms * 10) / 10}`;
+
+/**
+ * A print's answer's `Server-Timing`: the road, the worker where there are several, then a metric a step in time's order, and the whole.
+ *
+ * @remarks
+ * `read` is the request's body read and parsed, `queue` the wait for the worker's turn (a restart of its browser included), then the print's own steps as the log line names them (`folder`, `page`, `load`, `merge`, `cut`, `print`, `close`; a step the road does not take is absent). After `print` come its parts, each inside it: `print-ready` (Caster's module and the writer's port), `print-settled` (the wait for Cicero's `settled()`, which the cut already awaited), Caster's stages as `caster-<stage>`, `caster-rest` (Caster's `print()` beyond its stages, never below zero, since each stage is rounded to a tenth), `print-encode` (the bytes to base64 in the page), `print-cross` (the `evaluate` call beyond the page's own time), `print-decode` (base64 to bytes in node) and `print-rest` (what the step holds beyond those). `total` is from the request's arrival to the answer's head. The testbench parses these names; keep them.
+ */
+export const serverTiming = (trace: Trace, printed: Printed, at: { read: number; queue: number; total: number; worker?: number }): string => {
+  const out = [`road;desc="${trace.road}"`, ...(at.worker !== undefined ? [`worker;desc="${at.worker}"`] : []), metric('read', at.read), metric('queue', at.queue)];
+  for (const [name, ms] of Object.entries(trace.ms)) {
+    out.push(metric(name, ms));
+    const parts = printed.parts;
+    if (name !== 'print' || !parts) continue;
+    const stages = Object.entries(printed.caster?.ms ?? {}).map(([k, v]) => [k, Number(v)] as const);
+    out.push(metric('print-ready', parts.ready), metric('print-settled', parts.settled), ...stages.map(([k, v]) => metric(`caster-${k}`, v)), metric('caster-rest', Math.max(0, parts.caster - stages.reduce((t, [, v]) => t + v, 0))), metric('print-encode', parts.encode), metric('print-cross', parts.cross), metric('print-decode', parts.decode), metric('print-rest', ms - parts.ready - parts.settled - parts.caster - parts.encode - parts.cross - parts.decode));
+  }
+  out.push(metric('total', at.total));
+  return out.join(', ');
+};
+
 const stepsLine = ({ road, ms: steps }: Trace, printed: Printed) => `road ${road}; ${['page', 'load', 'merge', 'cut', 'print', 'close'].map((n) => `${n} ${Math.round(steps[n] ?? 0)}`).join(', ')}; caster ${Object.entries(printed.caster?.ms ?? {}).map(([k, v]) => `${k} ${Math.round(Number(v))}`).join(', ')}`;
 
 /** A JSON-LD data block, which the browser never runs: an opening tag with that attribute and at most a plain `id`, as a store host saves it, to the first `</script` (the tokenizer ends the element there or later, never sooner, so what is cut is always inside the block). */
@@ -142,6 +164,8 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
 
     /** Run `html` and `files` through the print's road: re-seated on the kept page where the document carries no script of its own, else on a new page. The folder is gone after. */
     const render = async (files: Map<string, Uint8Array>, given: Given, created: string | undefined, trace: Trace = { road: 'fresh', ms: {} }): Promise<Printed> => {
+      const lapped = lapper(trace.ms);
+      lapped.start('folder');
       const root = fs.mkdtempSync(path.join(os.tmpdir(), 'beltype-serve-'));
       const mine = new Set<string>();
       try {
@@ -150,12 +174,12 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
           fs.mkdirSync(path.dirname(file), { recursive: true });
           fs.writeFileSync(file, bytes);
         }
+        lapped.end('folder');
         const flags = { caster: given.caster, cicero: ciceroFlags.resolve(given.cicero as never), beltype: cliFlags.resolve(given.beltype as never) };
         const author = Buffer.from(files.get('index.html')!).toString('utf8');
         const served = servedHtml(author);
         const keep = keptRoad(author);
         trace.road = keep ? 'kept' : 'fresh';
-        const lapped = lapper(trace.ms);
         lapped.start('page');
         const fonts = [...files].filter(([name]) => /\.(woff2?|ttf|otf)$/i.test(name)).map(([name, bytes]) => [name, crypto.createHash('sha256').update(bytes).digest('hex')] as const);
         if (keep && kept && fonts.some(([name, hash]) => fontSeen.get(name) !== undefined && fontSeen.get(name) !== hash)) await closePage(kept);
@@ -288,8 +312,11 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       return result;
     };
 
-    /** A print's turn: logged, held to the timeout, and counted towards a restart. */
-    const inTurn = (writer: string, run: (trace: Trace) => Promise<Printed>): Promise<{ bytes: Buffer; printed: Printed; writer: string }> => enqueue(async () => {
+    /** A print's turn: logged, held to the timeout, and counted towards a restart. `asked` and `began` are when it was queued and when its turn came. */
+    const inTurn = (writer: string, run: (trace: Trace) => Promise<Printed>): Promise<{ bytes: Buffer; printed: Printed; writer: string; trace: Trace; asked: number; began: number; worker?: number }> => {
+      const asked = performance.now();
+      return enqueue(async () => {
+        const began = performance.now();
         const id = ++started;
         log(`beltype serve: print ${id} started${count > 1 ? ` on worker ${n + 1}` : ''}`);
         const t0 = performance.now();
@@ -303,7 +330,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
           sinceStart++;
           log(`beltype serve: print ${id}: 200, ${printed.pages} pages, ${writer}, ${Math.round(performance.now() - t0)} ms (write ${printed.caster?.ms['emit'] ?? '?'} ms)`);
           log(`beltype serve: print ${id}: ${stepsLine(trace, printed)}`);
-          return { bytes: printed.bytes, printed, writer };
+          return { bytes: printed.bytes, printed, writer, trace, asked, began, ...(count > 1 ? { worker: n + 1 } : {}) };
         } catch (error) {
           prints++;
           sinceStart++;
@@ -320,6 +347,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
           clearTimeout(timer);
         }
       });
+    };
 
     return { start, stop: stopBrowser, inTurn, render, renderMerge, load: () => pending + (restarting ? 1e6 : 0), queued: () => queued, restarting: () => restarting, seated: () => seated, settled: () => tail };
   };
@@ -415,6 +443,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       res.end(body);
     };
     const text = (status: number, message: string) => send(status, 'text/plain; charset=utf-8', message + '\n');
+    const arrived = performance.now();
     try {
       if (foreign(req)) throw new HttpError(403, `beltype serve: refused a request for ${req.headers.host ?? 'no host'} from ${req.headers.origin ?? 'no origin'}; it answers ${[...(wildcard ? [] : [authority]), ...allowed].join(', ')} and no page of another origin.`);
       const pathname = new URL(req.url ?? '/', 'http://x').pathname;
@@ -431,10 +460,11 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       const merge = /^\/templates\/([0-9a-f]+)\/print$/.exec(pathname);
       if (pathname !== '/print' && !merge) return text(404, `beltype serve: no ${pathname}; there is POST /print, POST /templates, POST /templates/<id>/print and GET /health.`);
       if (req.method !== 'POST') return text(405, `beltype serve: ${pathname} takes POST.`);
-      const { bytes, printed, writer } = await (merge ? printMerge(merge[1]!, req) : print(req));
+      const { bytes, printed, trace, asked, began, worker } = await (merge ? printMerge(merge[1]!, req) : print(req));
       for (const warning of printed.warnings) log(`beltype serve: warning: ${typeof warning === 'string' ? warning : JSON.stringify(warning)}`);
       for (const deferral of printed.deferred) log(`beltype serve: ${deferralLine(deferral)}`);
-      send(200, 'application/pdf', bytes, { 'x-beltype-pages': printed.pages, 'x-beltype-words': printed.words, 'x-beltype-warnings': printed.warnings.length, 'x-beltype-deferred': printed.deferred.length, ...standardHeader(printed.conformance) });
+      const timing = serverTiming(trace, printed, { read: asked - arrived, queue: began - asked, total: performance.now() - arrived, ...(worker !== undefined ? { worker } : {}) });
+      send(200, 'application/pdf', bytes, { 'server-timing': timing, 'x-beltype-pages': printed.pages, 'x-beltype-words': printed.words, 'x-beltype-warnings': printed.warnings.length, 'x-beltype-deferred': printed.deferred.length, ...standardHeader(printed.conformance) });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const status = error instanceof HttpError ? error.status : error instanceof BuildError ? 422 : error instanceof ValidationError || error instanceof FlagError ? 400 : 500;
