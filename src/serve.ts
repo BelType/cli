@@ -27,8 +27,8 @@ import { ARGS, ORIGIN, VIEWPORT, documentAssets, servedHtml, routeCompanions, ro
 import { keepMergeInPage, reseatInPage, seatMergeInPage, type Conformance, type Refusal } from './in-page.ts';
 import type { MergeData } from './merge-tab.ts';
 
-/** `maxUpload` is in bytes and `timeout` in milliseconds here; the command line speaks megabytes and seconds. `sandbox` false launches Chromium without its sandbox, for a container that runs as root. `allowedHosts` are the `Host` values answered besides the bound address, each `name` (any port) or `name:port`; a wildcard bind answers them alone and will not start without one. `workers` is how many prints run at once, each in a browser of its own, one where it is not given. `onBrowser` is told each browser as it starts, for tests. */
-export type ServeOptions = { host: string; port: number; maxUpload: number; timeout: number; restartAfter: number; workers?: number; sandbox?: boolean; allowedHosts?: string[]; log?: (line: string) => void; onBrowser?: (browser: Browser) => void };
+/** `maxUpload` is in bytes and `timeout` in milliseconds here; the command line speaks megabytes and seconds. `sandbox` false launches Chromium without its sandbox, for a container that runs as root. `allowedHosts` are the `Host` values answered besides the bound address, each `name` (any port) or `name:port`; a wildcard bind answers them alone and will not start without one. `workers` is how many prints run at once, each in a browser of its own, one where it is not given. `keepFonts` has each worker's writer keep the font programs and pictures it has checked between prints (Caster's `formeKeepsBlobs`), under `caster.writer=forme` only; the file is the same either way. `onBrowser` is told each browser as it starts, for tests. */
+export type ServeOptions = { host: string; port: number; maxUpload: number; timeout: number; restartAfter: number; workers?: number; keepFonts?: boolean; sandbox?: boolean; allowedHosts?: string[]; log?: (line: string) => void; onBrowser?: (browser: Browser) => void };
 
 const HOLDER_PATH = '/_beltype/holder.html';
 const HOLDER = `<!doctype html><html><head><meta charset="utf-8"><title>holder</title></head><body><script type="module">
@@ -109,6 +109,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
   let prints = 0;
   let started = 0;
   const count = options.workers ?? 1;
+  const keepBlobs = options.keepFonts === true;
 
   /**
    * A worker: everything one print needs and no other print may touch while it runs: a browser, its context and routes, the holder page with the shared writer, the kept page with the template seated on it and the faces it has seen, and a promise chain of its own.
@@ -194,7 +195,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
           await routeDocument(page, missing, { root, docPath: DOC_PATH, served });
           lapped.end('page');
           const reseat = keep ? served.replace(/(<script type="module" src="[^"?]+)"/g, `$1?kept=${++reseats}"`) : undefined;
-          const printed = await printOnPage(page, mine, flags, { docPath: DOC_PATH, sharedWriter: true, progress: { step: lapped.start, lap: lapped.end }, ...(reseat !== undefined ? { reseat } : {}), ...(created !== undefined ? { created } : {}) });
+          const printed = await printOnPage(page, mine, flags, { docPath: DOC_PATH, sharedWriter: true, keepBlobs, progress: { step: lapped.start, lap: lapped.end }, ...(reseat !== undefined ? { reseat } : {}), ...(created !== undefined ? { created } : {}) });
           lapped.end('print');
           if (mine.size) throw refusal(mine, null);
           if (!keep) { lapped.start('close'); await closePage(page); lapped.end('close'); }
@@ -248,7 +249,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
           trace.road = 'merge seated';
         }
         lapped.end('merge');
-        const printed = await cutAndPrint(page, mine, flags, { sharedWriter: true, resumeAt, progress: { step: lapped.start, lap: lapped.end }, ...(created !== undefined ? { created } : {}) });
+        const printed = await cutAndPrint(page, mine, flags, { sharedWriter: true, keepBlobs, resumeAt, progress: { step: lapped.start, lap: lapped.end }, ...(created !== undefined ? { created } : {}) });
         lapped.end('print');
         if (mine.size) throw refusal(mine, null);
         return printed;

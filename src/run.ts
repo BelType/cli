@@ -34,7 +34,7 @@ export type Assets = { files: Record<string, string>; dirs: Record<string, strin
 export type RunFlags = { caster: Record<string, unknown>; cicero: Record<string, unknown>; beltype: { printer: string; check: boolean | string } };
 
 /** What {@link printOnPage} asks beyond the flags. `reseat` is the served document to write into the page's existing document in place of a navigation, for a page kept between prints. `progress` is told each step as it starts and each lap as it ends, for a trace. */
-export type RunOptions = { created?: string; reseat?: string; sharedWriter?: boolean; measures?: boolean; resumeAt?: unknown; progress?: { step(name: string): void; lap(key: string): void; cicero?(measures: Measure[]): void } };
+export type RunOptions = { created?: string; reseat?: string; sharedWriter?: boolean; keepBlobs?: boolean; measures?: boolean; resumeAt?: unknown; progress?: { step(name: string): void; lap(key: string): void; cicero?(measures: Measure[]): void } };
 
 export type Printed = { bytes: Buffer; pages: number; words: number; warnings: unknown[]; deferred: Deferral[]; conformance: Conformance | null; caster: CasterTrace | null; cicero: Measure[]; screens: Shot[]; confessions: Confession[]; printMs?: number; parts?: PrintParts };
 
@@ -152,7 +152,7 @@ export async function cutAndPrint(page: Page, missing: Set<string>, flags: RunFl
     return { bytes, pages: await page.locator('beltype-page').count(), words: 0, warnings: [], deferred: [], conformance: null, caster: null, cicero: measures, screens, confessions: [] };
   }
   const sent = performance.now();
-  const printed = await page.evaluate(printInPage, { options: flags.caster, ...(o.created !== undefined ? { created: o.created } : {}), ...(o.sharedWriter ? { sharedWriter: true } : {}) });
+  const printed = await page.evaluate(printInPage, { options: flags.caster, ...(o.created !== undefined ? { created: o.created } : {}), ...(o.sharedWriter ? { sharedWriter: true } : {}), ...(o.keepBlobs ? { keepBlobs: true } : {}) });
   const back = performance.now();
   if ('refused' in printed) throw refusal(missing, printed);
   const bytes = Buffer.from(printed.base64, 'base64');

@@ -166,6 +166,17 @@ test('two workers: two prints at once run together, each the file one worker giv
   assert.equal(((await (await fetch(`${s.url}/health`)).json()) as { workers: number }).workers, 2);
 });
 
+test('keepFonts: the writer keeps the fonts between prints, and every file is the one printed without it', { timeout: 120_000 }, async () => {
+  const { s } = await own({ keepFonts: true });
+  const forme = { 'caster.writer': 'forme' };
+  const one = Buffer.from(await (await post(server.url, forme)).arrayBuffer());
+  for (let i = 0; i < 3; i++) {
+    const res = await post(s.url, forme);
+    assert.equal(res.status, 200, await res.clone().text());
+    assert.ok(Buffer.from(await res.arrayBuffer()).equals(one), `print ${i + 1} with the fonts kept is not the file printed without`);
+  }
+});
+
 test('two workers, restartAfter 4: the first restarts after two prints, the server stays up, and the next print goes to the other', { timeout: 120_000 }, async () => {
   const { s, lines } = await own({ workers: 2, restartAfter: 4 });
   for (let i = 0; i < 2; i++) assert.equal((await post(s.url)).status, 200);
