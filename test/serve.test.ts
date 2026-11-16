@@ -136,6 +136,29 @@ test('restartAfter 2: three prints, one restart, after the second', async () => 
   assert.deepEqual(events, ['print', 'print', 'restart', 'print']);
 });
 
+test('two workers: two prints at once run together, each the file one worker gives, and /health counts the workers', { timeout: 120_000 }, async () => {
+  const { s, lines } = await own({ workers: 2 });
+  const [a, b] = await Promise.all([post(s.url), post(s.url)]);
+  assert.deepEqual([a!.status, b!.status], [200, 200]);
+  const one = Buffer.from(await (await post(server.url)).arrayBuffer());
+  for (const r of [a!, b!]) assert.ok(Buffer.from(await r.arrayBuffer()).equals(one));
+  // The second began before the first ended, and on the other worker.
+  const events = lines.filter((l) => / started| 200,/.test(l)).map((l) => (/started/.test(l) ? /worker (\d)/.exec(l)![1] : 'end'));
+  assert.deepEqual(events, ['1', '2', 'end', 'end']);
+  assert.equal(((await (await fetch(`${s.url}/health`)).json()) as { workers: number }).workers, 2);
+});
+
+test('two workers, restartAfter 4: the first restarts after two prints, the server stays up, and the next print goes to the other', { timeout: 120_000 }, async () => {
+  const { s, lines } = await own({ workers: 2, restartAfter: 4 });
+  for (let i = 0; i < 2; i++) assert.equal((await post(s.url)).status, 200);
+  assert.equal((await upTo(s.url)).status, 'up');
+  assert.equal((await post(s.url)).status, 200);
+  const events = lines.filter((l) => /restarting the browser| started/.test(l)).map((l) => `${/restarting/.test(l) ? 'restart' : 'print'} ${/worker (\d)/.exec(l)![1]}`);
+  // The restart's line is written once the old browser is closed, so it and the third print's come in either order.
+  assert.deepEqual(events.slice(0, 2), ['print 1', 'print 1']);
+  assert.deepEqual(events.slice(2).sort(), ['print 2', 'restart 1']);
+});
+
 test('a print over the time limit is a 504 within 2 s, and the next print succeeds', async () => {
   const { s } = await own({ timeout: 1000 });
   const slow = paperForm({ created: CREATED }, 'index.html');

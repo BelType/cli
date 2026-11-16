@@ -8,7 +8,7 @@
  *
  * **A mail merge, on the same page.** `POST /templates` takes a template's folder once, and `POST /templates/<id>/print` takes one customer's values and rows as JSON. The first customer seats the template and merges in the tab; each later one replaces only the top-level boxes that changed and resumes the cut (`merge-tab.ts`), which keeps the sheets, the faces and the rewrite, and leaves nothing of the customer before. Where the shape of the body changed, or Cicero will not promise the patch, the template is seated again and the log line says why. Measured 2026-11-07 on the bolletta: the PDF byte for byte the folder route's, and 30 to 50 ms less on a 61-day bill (codeberg.org/BelType/cli issue 2).
  *
- * **One at a time, and kept alive.** A promise chain runs the prints in turn. The browser is closed and started again (routes, holder page, warm-up) after `restartAfter` prints and after a print that failed with a 500, and a disconnected browser is started again before the next print. The warm-up prints a built-in document twice under forme, so the first request is warm too.
+ * **One at a time in each worker, and kept alive.** A worker is the browser, context, holder page and kept page above, with a promise chain that runs its prints in turn; `--workers` says how many the server runs, one unless told, and a print goes to the worker with the least waiting, a customer to one that has their template seated where two wait alike. A worker's browser is closed and started again (routes, holder page, warm-up) after `restartAfter` prints and after a print that failed with a 500, and a disconnected browser is started again before the next print; the workers' first restarts are spread, so the server slows and does not stop. The warm-up prints a built-in document twice under forme, so the first request is warm too.
  *
  * @packageDocumentation
  */
@@ -27,8 +27,8 @@ import { ARGS, ORIGIN, VIEWPORT, documentAssets, servedHtml, routeCompanions, ro
 import { keepMergeInPage, reseatInPage, seatMergeInPage, type Conformance, type Refusal } from './in-page.ts';
 import type { MergeData } from './merge-tab.ts';
 
-/** `maxUpload` is in bytes and `timeout` in milliseconds here; the command line speaks megabytes and seconds. `sandbox` false launches Chromium without its sandbox, for a container that runs as root. `allowedHosts` are the `Host` values answered besides the bound address, each `name` (any port) or `name:port`; a wildcard bind answers them alone and will not start without one. `onBrowser` is told each browser as it starts, for tests. */
-export type ServeOptions = { host: string; port: number; maxUpload: number; timeout: number; restartAfter: number; sandbox?: boolean; allowedHosts?: string[]; log?: (line: string) => void; onBrowser?: (browser: Browser) => void };
+/** `maxUpload` is in bytes and `timeout` in milliseconds here; the command line speaks megabytes and seconds. `sandbox` false launches Chromium without its sandbox, for a container that runs as root. `allowedHosts` are the `Host` values answered besides the bound address, each `name` (any port) or `name:port`; a wildcard bind answers them alone and will not start without one. `workers` is how many prints run at once, each in a browser of its own, one where it is not given. `onBrowser` is told each browser as it starts, for tests. */
+export type ServeOptions = { host: string; port: number; maxUpload: number; timeout: number; restartAfter: number; workers?: number; sandbox?: boolean; allowedHosts?: string[]; log?: (line: string) => void; onBrowser?: (browser: Browser) => void };
 
 const HOLDER_PATH = '/_beltype/holder.html';
 const HOLDER = `<!doctype html><html><head><meta charset="utf-8"><title>holder</title></head><body><script type="module">
@@ -81,198 +81,254 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
   const allowed = new Set((options.allowedHosts ?? []).map((h) => h.toLowerCase()));
   if (wildcard && !allowed.size) throw new ValidationError(`beltype serve: --host ${options.host} listens on every address, so the server cannot tell its own name from a rebound one; name the hosts it answers with --allowed-hosts <name[:port],…>.`);
   const assets: Assets = documentAssets();
-  /** What the print running now could not answer; null between prints, so a page left over from one never writes into the next. */
-  let active: Set<string> | null = null;
-  /** The routes' one sink, context's and pages' alike: a kept page's routes outlive the print that set them. */
-  const missing = { add: (entry: string) => active?.add(entry) };
-  /** The page the print running now uses, which a timeout closes. */
-  let current: Page | null = null;
-  let kept: Page | null = null;
-  /** The template whose merge the kept page shows, or null when it shows anything else. */
-  let seated: string | null = null;
-  /** The SHA-256 of the bytes the kept page was served at each font address: Chromium keeps the first face it measured for a URL, so other bytes at a known address need a fresh page. */
-  const fontSeen = new Map<string, string>();
   const templates = new Map<string, Template>();
-  let reseats = 0;
-  let browser: Browser | null = null;
-  let context: BrowserContext | null = null;
   let version = 'unknown';
-  let restarting = false;
-  let needsRestart = false;
+  /** Prints ended and prints begun: the first is what `/health` tells, the second numbers the log's lines. */
   let prints = 0;
-  let sinceStart = 0;
-  let queued = 0;
-  let tail: Promise<unknown> = Promise.resolve();
+  let started = 0;
+  const count = options.workers ?? 1;
 
-  const stopBrowser = async () => {
-    const old = browser;
-    browser = context = kept = seated = null;
-    await old?.close().catch(() => {});
-  };
+  /**
+   * A worker: everything one print needs and no other print may touch while it runs: a browser, its context and routes, the holder page with the shared writer, the kept page with the template seated on it and the faces it has seen, and a promise chain of its own.
+   *
+   * @remarks
+   * Not several pages in one browser: what a print could not fetch is noted once for the whole context, so two prints at once could not tell whose miss it was, and the shared writer is one for the browser. Measured 2026-11-16 in the testbench (its `docs/plan.md`, *The server in parallel*): four servers sharing four CPUs printed 2.6 to 3.2 times what one did, and a print keeps about 1.2 CPUs busy, so workers past the machine's CPUs gain nothing.
+   */
+  const worker = (n: number) => {
+    /** What the print running now could not answer; null between prints, so a page left over from one never writes into the next. */
+    let active: Set<string> | null = null;
+    /** The routes' one sink, context's and pages' alike: a kept page's routes outlive the print that set them. */
+    const missing = { add: (entry: string) => active?.add(entry) };
+    /** The page the print running now uses, which a timeout closes. */
+    let current: Page | null = null;
+    let kept: Page | null = null;
+    /** The template whose merge the kept page shows, or null when it shows anything else. */
+    let seated: string | null = null;
+    /** The SHA-256 of the bytes the kept page was served at each font address: Chromium keeps the first face it measured for a URL, so other bytes at a known address need a fresh page. */
+    const fontSeen = new Map<string, string>();
+    let reseats = 0;
+    let browser: Browser | null = null;
+    let context: BrowserContext | null = null;
+    let restarting = false;
+    let needsRestart = false;
+    let sinceStart = 0;
+    let queued = 0;
+    /** The prints waiting and the one running. */
+    let pending = 0;
+    let tail: Promise<unknown> = Promise.resolve();
 
-  /** The kept page, opened on a blank document at the document's own path so that relative references resolve as a print's would. */
-  const openKept = async () => {
-    const page = await context!.newPage();
-    page.on('pageerror', (error) => console.warn(`page error: ${error.message}`));
-    await routeDocument(page, missing, { root: path.join(os.tmpdir(), 'beltype-serve-none'), docPath: DOC_PATH, served: servedHtml('<!doctype html><html><head></head><body></body></html>') });
-    await page.goto(ORIGIN + DOC_PATH, { waitUntil: 'load' });
-    seated = null;
-    fontSeen.clear();
-    return kept = page;
-  };
+    const stopBrowser = async () => {
+      const old = browser;
+      browser = context = kept = seated = null;
+      await old?.close().catch(() => {});
+    };
 
-  /** Closes `page`, and forgets it if it is the kept one: a page a failed or timed-out print used is never reused. */
-  const closePage = async (page: Page) => {
-    if (kept === page) kept = seated = null;
-    await page.close().catch(() => {});
-  };
+    /** The kept page, opened on a blank document at the document's own path so that relative references resolve as a print's would. */
+    const openKept = async () => {
+      const page = await context!.newPage();
+      page.on('pageerror', (error) => console.warn(`page error: ${error.message}`));
+      await routeDocument(page, missing, { root: path.join(os.tmpdir(), 'beltype-serve-none'), docPath: DOC_PATH, served: servedHtml('<!doctype html><html><head></head><body></body></html>') });
+      await page.goto(ORIGIN + DOC_PATH, { waitUntil: 'load' });
+      seated = null;
+      fontSeen.clear();
+      return kept = page;
+    };
 
-  /** Run `html` and `files` through the print's road: re-seated on the kept page where the document carries no script of its own, else on a new page. The folder is gone after. */
-  const render = async (files: Map<string, Uint8Array>, given: Given, created: string | undefined, trace: Trace = { road: 'fresh', ms: {} }): Promise<Printed> => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'beltype-serve-'));
-    const mine = new Set<string>();
-    try {
-      for (const [name, bytes] of files) {
-        const file = path.join(root, ...name.split('/'));
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, bytes);
+    /** Closes `page`, and forgets it if it is the kept one: a page a failed or timed-out print used is never reused. */
+    const closePage = async (page: Page) => {
+      if (kept === page) kept = seated = null;
+      await page.close().catch(() => {});
+    };
+
+    /** Run `html` and `files` through the print's road: re-seated on the kept page where the document carries no script of its own, else on a new page. The folder is gone after. */
+    const render = async (files: Map<string, Uint8Array>, given: Given, created: string | undefined, trace: Trace = { road: 'fresh', ms: {} }): Promise<Printed> => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'beltype-serve-'));
+      const mine = new Set<string>();
+      try {
+        for (const [name, bytes] of files) {
+          const file = path.join(root, ...name.split('/'));
+          fs.mkdirSync(path.dirname(file), { recursive: true });
+          fs.writeFileSync(file, bytes);
+        }
+        const flags = { caster: given.caster, cicero: ciceroFlags.resolve(given.cicero as never), beltype: cliFlags.resolve(given.beltype as never) };
+        const author = Buffer.from(files.get('index.html')!).toString('utf8');
+        const served = servedHtml(author);
+        const keep = keptRoad(author);
+        trace.road = keep ? 'kept' : 'fresh';
+        const lapped = lapper(trace.ms);
+        lapped.start('page');
+        const fonts = [...files].filter(([name]) => /\.(woff2?|ttf|otf)$/i.test(name)).map(([name, bytes]) => [name, crypto.createHash('sha256').update(bytes).digest('hex')] as const);
+        if (keep && kept && fonts.some(([name, hash]) => fontSeen.get(name) !== undefined && fontSeen.get(name) !== hash)) await closePage(kept);
+        const page = current = keep ? (kept ?? await openKept()) : await context!.newPage();
+        if (keep) for (const [name, hash] of fonts) fontSeen.set(name, hash);
+        active = mine;
+        try {
+          if (keep) {
+            seated = null;
+            await page.unrouteAll({ behavior: 'wait' });
+          }
+          await routeDocument(page, missing, { root, docPath: DOC_PATH, served });
+          lapped.end('page');
+          const reseat = keep ? served.replace(/(<script type="module" src="[^"?]+)"/g, `$1?kept=${++reseats}"`) : undefined;
+          const printed = await printOnPage(page, mine, flags, { docPath: DOC_PATH, sharedWriter: true, progress: { step: lapped.start, lap: lapped.end }, ...(reseat !== undefined ? { reseat } : {}), ...(created !== undefined ? { created } : {}) });
+          lapped.end('print');
+          if (mine.size) throw refusal(mine, null);
+          if (!keep) { lapped.start('close'); await closePage(page); lapped.end('close'); }
+          return printed;
+        } catch (error) {
+          await closePage(page);
+          throw error;
+        }
+      } finally {
+        if (active === mine) active = null;
+        fs.rmSync(root, { recursive: true, force: true });
       }
-      const flags = { caster: given.caster, cicero: ciceroFlags.resolve(given.cicero as never), beltype: cliFlags.resolve(given.beltype as never) };
-      const author = Buffer.from(files.get('index.html')!).toString('utf8');
-      const served = servedHtml(author);
-      const keep = keptRoad(author);
-      trace.road = keep ? 'kept' : 'fresh';
+    };
+
+    /** One customer of `template` on the kept page: the changed boxes replaced where the template is seated, else the template seated and merged. */
+    const renderMerge = async (template: Template, data: MergeData, created: string | undefined, trace: Trace): Promise<Printed> => {
+      const flags = { caster: template.given.caster, cicero: ciceroFlags.resolve(template.given.cicero as never), beltype: cliFlags.resolve(template.given.beltype as never) };
+      const mine = new Set<string>();
       const lapped = lapper(trace.ms);
       lapped.start('page');
-      const fonts = [...files].filter(([name]) => /\.(woff2?|ttf|otf)$/i.test(name)).map(([name, bytes]) => [name, crypto.createHash('sha256').update(bytes).digest('hex')] as const);
-      if (keep && kept && fonts.some(([name, hash]) => fontSeen.get(name) !== undefined && fontSeen.get(name) !== hash)) await closePage(kept);
-      const page = current = keep ? (kept ?? await openKept()) : await context!.newPage();
-      if (keep) for (const [name, hash] of fonts) fontSeen.set(name, hash);
+      const page = current = kept ?? await openKept();
       active = mine;
+      lapped.end('page');
+      const merged = <T extends object>(answer: T | Refusal): T => {
+        if ('refused' in answer) throw refusal(mine, answer);
+        return answer;
+      };
       try {
-        if (keep) {
-          seated = null;
-          await page.unrouteAll({ behavior: 'wait' });
+        let resumeAt: unknown = null;
+        lapped.start('merge');
+        if (seated === template.id) {
+          const answer = merged(await page.evaluate(keepMergeInPage, data));
+          if ('again' in answer) {
+            log(`beltype serve: the template is seated again: ${answer.again}`);
+            seated = null;
+          } else {
+            resumeAt = answer.resumeAt;
+            trace.road = 'merge kept';
+          }
         }
-        await routeDocument(page, missing, { root, docPath: DOC_PATH, served });
-        lapped.end('page');
-        const reseat = keep ? served.replace(/(<script type="module" src="[^"?]+)"/g, `$1?kept=${++reseats}"`) : undefined;
-        const printed = await printOnPage(page, mine, flags, { docPath: DOC_PATH, sharedWriter: true, progress: { step: lapped.start, lap: lapped.end }, ...(reseat !== undefined ? { reseat } : {}), ...(created !== undefined ? { created } : {}) });
+        if (seated !== template.id) {
+          lapped.start('load');
+          await page.unrouteAll({ behavior: 'wait' });
+          const served = servedHtml(template.author);
+          await routeDocument(page, missing, { root: template.root, docPath: DOC_PATH, served });
+          await page.evaluate(reseatInPage, served.replace(/(<script type="module" src="[^"?]+)"/g, `$1?kept=${++reseats}"`));
+          lapped.end('load');
+          lapped.start('merge');
+          merged(await page.evaluate(seatMergeInPage, { template: template.author, data }));
+          seated = template.id;
+          trace.road = 'merge seated';
+        }
+        lapped.end('merge');
+        const printed = await cutAndPrint(page, mine, flags, { sharedWriter: true, resumeAt, progress: { step: lapped.start, lap: lapped.end }, ...(created !== undefined ? { created } : {}) });
         lapped.end('print');
         if (mine.size) throw refusal(mine, null);
-        if (!keep) { lapped.start('close'); await closePage(page); lapped.end('close'); }
         return printed;
       } catch (error) {
         await closePage(page);
         throw error;
+      } finally {
+        if (active === mine) active = null;
       }
-    } finally {
-      if (active === mine) active = null;
-      fs.rmSync(root, { recursive: true, force: true });
-    }
-  };
-
-  /** One customer of `template` on the kept page: the changed boxes replaced where the template is seated, else the template seated and merged. */
-  const renderMerge = async (template: Template, data: MergeData, created: string | undefined, trace: Trace): Promise<Printed> => {
-    const flags = { caster: template.given.caster, cicero: ciceroFlags.resolve(template.given.cicero as never), beltype: cliFlags.resolve(template.given.beltype as never) };
-    const mine = new Set<string>();
-    const lapped = lapper(trace.ms);
-    lapped.start('page');
-    const page = current = kept ?? await openKept();
-    active = mine;
-    lapped.end('page');
-    const merged = <T extends object>(answer: T | Refusal): T => {
-      if ('refused' in answer) throw refusal(mine, answer);
-      return answer;
     };
-    try {
-      let resumeAt: unknown = null;
-      lapped.start('merge');
-      if (seated === template.id) {
-        const answer = merged(await page.evaluate(keepMergeInPage, data));
-        if ('again' in answer) {
-          log(`beltype serve: the template is seated again: ${answer.again}`);
-          seated = null;
-        } else {
-          resumeAt = answer.resumeAt;
-          trace.road = 'merge kept';
+
+    const start = async (since = 0) => {
+      browser = await chromium.launch({ headless: true, args: ARGS, chromiumSandbox: options.sandbox ?? true });
+      const mine = browser;
+      version = mine.version();
+      mine.on('disconnected', () => { if (browser === mine) needsRestart = true; });
+      options.onBrowser?.(mine);
+      context = await mine.newContext({ viewport: VIEWPORT, serviceWorkers: 'block' });
+      await routeCompanions(context, missing, assets);
+      // Registered after the companions' routes, so it runs first.
+      await context.route(ORIGIN + HOLDER_PATH, (route) => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: servedHtml(HOLDER) }));
+      const holder = await context.newPage();
+      await holder.goto(ORIGIN + HOLDER_PATH, { waitUntil: 'load' });
+      await holder.waitForFunction(() => (window as unknown as { sw?: unknown }).sw !== undefined);
+      await openKept();
+      const given = await parseFlagArgs(['caster.writer=forme']);
+      for (const n of [1, 2]) {
+        const printed = await render(new Map([['index.html', Buffer.from(WARMUP)], ['warm.woff2', fs.readFileSync(WARMUP_FONT)]]), given, undefined);
+        log(`beltype serve: warm-up ${n}: ${printed.pages} pages, forme write ${printed.caster?.ms['emit'] ?? '?'} ms`);
+      }
+      needsRestart = false;
+      sinceStart = since;
+    };
+
+    const restart = async () => {
+      restarting = true;
+      try {
+        await stopBrowser();
+        log(`beltype serve: restarting the browser${count > 1 ? ` of worker ${n + 1}` : ''}`);
+        await start();
+      } catch (error) {
+        needsRestart = true;
+        throw error;
+      } finally {
+        restarting = false;
+      }
+    };
+
+    /** Runs `job` after every earlier job and after any restart it needs; the restart a job asks for happens before the next one. */
+    const enqueue = <T>(job: () => Promise<T>): Promise<T> => {
+      queued++;
+      pending++;
+      const result = tail.then(async () => {
+        queued--;
+        if (needsRestart || sinceStart >= options.restartAfter) await restart();
+        return job();
+      });
+      const done = () => { pending--; };
+      result.then(done, done);
+      tail = result.then(async () => { if (needsRestart || sinceStart >= options.restartAfter) await restart(); }).catch(() => {});
+      return result;
+    };
+
+    /** A print's turn: logged, held to the timeout, and counted towards a restart. */
+    const inTurn = (writer: string, run: (trace: Trace) => Promise<Printed>): Promise<{ bytes: Buffer; printed: Printed; writer: string }> => enqueue(async () => {
+        const id = ++started;
+        log(`beltype serve: print ${id} started${count > 1 ? ` on worker ${n + 1}` : ''}`);
+        const t0 = performance.now();
+        const trace: Trace = { road: 'fresh', ms: {} };
+        const running = run(trace);
+        let timer: NodeJS.Timeout | undefined;
+        const limit = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new HttpError(504, `beltype serve: the print took over ${options.timeout / 1000} s.`)), options.timeout); });
+        try {
+          const printed = await Promise.race([running, limit]);
+          prints++;
+          sinceStart++;
+          log(`beltype serve: print ${id}: 200, ${printed.pages} pages, ${writer}, ${Math.round(performance.now() - t0)} ms (write ${printed.caster?.ms['emit'] ?? '?'} ms)`);
+          log(`beltype serve: print ${id}: ${stepsLine(trace, printed)}`);
+          return { bytes: printed.bytes, printed, writer };
+        } catch (error) {
+          prints++;
+          sinceStart++;
+          running.catch(() => {});
+          if (error instanceof HttpError) {
+            // The page the print still runs on is closed, so it asks for nothing more, and the print is let end, so its folder goes before the answer.
+            if (current) await closePage(current);
+            if (kept) await closePage(kept);
+            await running.catch(() => {});
+          }
+          if (!(error instanceof BuildError) && !(error instanceof HttpError)) needsRestart = true;
+          throw error;
+        } finally {
+          clearTimeout(timer);
         }
-      }
-      if (seated !== template.id) {
-        lapped.start('load');
-        await page.unrouteAll({ behavior: 'wait' });
-        const served = servedHtml(template.author);
-        await routeDocument(page, missing, { root: template.root, docPath: DOC_PATH, served });
-        await page.evaluate(reseatInPage, served.replace(/(<script type="module" src="[^"?]+)"/g, `$1?kept=${++reseats}"`));
-        lapped.end('load');
-        lapped.start('merge');
-        merged(await page.evaluate(seatMergeInPage, { template: template.author, data }));
-        seated = template.id;
-        trace.road = 'merge seated';
-      }
-      lapped.end('merge');
-      const printed = await cutAndPrint(page, mine, flags, { sharedWriter: true, resumeAt, progress: { step: lapped.start, lap: lapped.end }, ...(created !== undefined ? { created } : {}) });
-      lapped.end('print');
-      if (mine.size) throw refusal(mine, null);
-      return printed;
-    } catch (error) {
-      await closePage(page);
-      throw error;
-    } finally {
-      if (active === mine) active = null;
-    }
+      });
+
+    return { start, stop: stopBrowser, inTurn, render, renderMerge, load: () => pending + (restarting ? 1e6 : 0), queued: () => queued, restarting: () => restarting, seated: () => seated, settled: () => tail };
   };
 
-  const start = async () => {
-    browser = await chromium.launch({ headless: true, args: ARGS, chromiumSandbox: options.sandbox ?? true });
-    const mine = browser;
-    version = mine.version();
-    mine.on('disconnected', () => { if (browser === mine) needsRestart = true; });
-    options.onBrowser?.(mine);
-    context = await mine.newContext({ viewport: VIEWPORT, serviceWorkers: 'block' });
-    await routeCompanions(context, missing, assets);
-    // Registered after the companions' routes, so it runs first.
-    await context.route(ORIGIN + HOLDER_PATH, (route) => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: servedHtml(HOLDER) }));
-    const holder = await context.newPage();
-    await holder.goto(ORIGIN + HOLDER_PATH, { waitUntil: 'load' });
-    await holder.waitForFunction(() => (window as unknown as { sw?: unknown }).sw !== undefined);
-    await openKept();
-    const given = await parseFlagArgs(['caster.writer=forme']);
-    for (const n of [1, 2]) {
-      const printed = await render(new Map([['index.html', Buffer.from(WARMUP)], ['warm.woff2', fs.readFileSync(WARMUP_FONT)]]), given, undefined);
-      log(`beltype serve: warm-up ${n}: ${printed.pages} pages, forme write ${printed.caster?.ms['emit'] ?? '?'} ms`);
-    }
-    needsRestart = false;
-    sinceStart = 0;
-  };
-
-  const restart = async () => {
-    restarting = true;
-    try {
-      await stopBrowser();
-      log('beltype serve: restarting the browser');
-      await start();
-    } catch (error) {
-      needsRestart = true;
-      throw error;
-    } finally {
-      restarting = false;
-    }
-  };
-
-  /** Runs `job` after every earlier job and after any restart it needs; the restart a job asks for happens before the next one. */
-  const enqueue = <T>(job: () => Promise<T>): Promise<T> => {
-    queued++;
-    const result = tail.then(async () => {
-      queued--;
-      if (needsRestart || sinceStart >= options.restartAfter) await restart();
-      return job();
-    });
-    tail = result.then(async () => { if (needsRestart || sinceStart >= options.restartAfter) await restart(); }).catch(() => {});
-    return result;
-  };
-
-  await start();
+  const workers = Array.from({ length: count }, (_, n) => worker(n));
+  // The first restarts are spread over the workers, so no two come due together: the server slows where one worker would stop.
+  await Promise.all(workers.map((w, n) => w.start(Math.floor((options.restartAfter * (count - 1 - n)) / count))));
+  /** The worker a print goes to: the one with the least waiting, and among equals one whose kept page already shows the print's template, or shows none for a folder, so that no seated template is lost for nothing. A worker starting its browser again is the last choice. */
+  const pick = (template: string | null) => workers.reduce((best, w) => (w.load() < best.load() || (w.load() === best.load() && w.seated() === template && best.seated() !== template) ? w : best));
 
   /** A request's form: the document's files, the flags, and the instant the file says it was made. */
   const readDocument = async (req: http.IncomingMessage): Promise<{ files: Map<string, Uint8Array>; args: string[]; given: Given; created: string | undefined; writer: string }> => {
@@ -296,42 +352,10 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
     return { files, args, given, created, writer: String(given.caster['writer'] ?? 'pdf-lib') };
   };
 
-  /** A print's turn: logged, held to the timeout, and counted towards a restart. */
-  const inTurn = (writer: string, run: (trace: Trace) => Promise<Printed>): Promise<{ bytes: Buffer; printed: Printed; writer: string }> => enqueue(async () => {
-      const id = prints + 1;
-      log(`beltype serve: print ${id} started`);
-      const t0 = performance.now();
-      const trace: Trace = { road: 'fresh', ms: {} };
-      const running = run(trace);
-      let timer: NodeJS.Timeout | undefined;
-      const limit = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new HttpError(504, `beltype serve: the print took over ${options.timeout / 1000} s.`)), options.timeout); });
-      try {
-        const printed = await Promise.race([running, limit]);
-        prints++;
-        sinceStart++;
-        log(`beltype serve: print ${id}: 200, ${printed.pages} pages, ${writer}, ${Math.round(performance.now() - t0)} ms (write ${printed.caster?.ms['emit'] ?? '?'} ms)`);
-        log(`beltype serve: print ${id}: ${stepsLine(trace, printed)}`);
-        return { bytes: printed.bytes, printed, writer };
-      } catch (error) {
-        prints++;
-        sinceStart++;
-        running.catch(() => {});
-        if (error instanceof HttpError) {
-          // The page the print still runs on is closed, so it asks for nothing more, and the print is let end, so its folder goes before the answer.
-          if (current) await closePage(current);
-          if (kept) await closePage(kept);
-          await running.catch(() => {});
-        }
-        if (!(error instanceof BuildError) && !(error instanceof HttpError)) needsRestart = true;
-        throw error;
-      } finally {
-        clearTimeout(timer);
-      }
-    });
-
   const print = async (req: http.IncomingMessage) => {
     const { files, given, created, writer } = await readDocument(req);
-    return inTurn(writer, (trace) => render(files, given, created, trace));
+    const w = pick(null);
+    return w.inTurn(writer, (trace) => w.render(files, given, created, trace));
   };
 
   /** A template's folder, kept on disk under the hash of what it holds, so uploading it again is the same template. */
@@ -353,7 +377,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
     templates.set(id, { id, root, author, given });
     for (const old of templates.values()) {
       if (templates.size <= TEMPLATES_KEPT) break;
-      if (old.id === seated) continue;
+      if (workers.some((w) => w.seated() === old.id)) continue;
       templates.delete(old.id);
       fs.rmSync(old.root, { recursive: true, force: true });
     }
@@ -365,7 +389,8 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
     const template = templates.get(id);
     if (!template) throw new HttpError(404, `beltype serve: no template ${id}; POST its folder to /templates (the oldest are dropped past ${TEMPLATES_KEPT}, and a restart of the server forgets them all).`);
     const { data, created } = mergeBody(await readBody(req, options.maxUpload));
-    return inTurn(String(template.given.caster['writer'] ?? 'pdf-lib'), (trace) => renderMerge(template, data, created ?? createdFromEnv(), trace));
+    const w = pick(template.id);
+    return w.inTurn(String(template.given.caster['writer'] ?? 'pdf-lib'), (trace) => w.renderMerge(template, data, created ?? createdFromEnv(), trace));
   };
 
   /** The `Host` a request must name; set once the server listens. */
@@ -395,7 +420,9 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       const pathname = new URL(req.url ?? '/', 'http://x').pathname;
       if (pathname === '/health') {
         if (req.method !== 'GET') return text(405, 'beltype serve: /health takes GET.');
-        return send(restarting ? 503 : 200, 'application/json', JSON.stringify({ status: restarting ? 'restarting' : 'up', chromium: version, prints, queued }));
+        // Restarting only when no worker can take a print: one worker starting its browser again slows the server and does not stop it.
+        const restarting = workers.every((w) => w.restarting());
+        return send(restarting ? 503 : 200, 'application/json', JSON.stringify({ status: restarting ? 'restarting' : 'up', chromium: version, prints, queued: workers.reduce((t, w) => t + w.queued(), 0), workers: count }));
       }
       if (pathname === '/templates') {
         if (req.method !== 'POST') return text(405, 'beltype serve: /templates takes POST.');
@@ -432,8 +459,8 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
     async close() {
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      await tail;
-      await stopBrowser();
+      await Promise.all(workers.map((w) => w.settled()));
+      await Promise.all(workers.map((w) => w.stop()));
       for (const { root } of templates.values()) fs.rmSync(root, { recursive: true, force: true });
     }
   };
