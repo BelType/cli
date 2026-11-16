@@ -10,6 +10,7 @@ import { specimen } from '@beltype/specimens';
 import { ValidationError } from '@beltype/common/errors';
 import { print } from '../src/print.ts';
 import { serve, keptRoad, WARMUP, WARMUP_FONT } from '../src/serve.ts';
+import { timing, wholeHoldsParts } from './server-timing.ts';
 
 const SAMPLE = specimen('paper').entry;
 const FOLDER = path.dirname(SAMPLE);
@@ -66,6 +67,20 @@ for (const writer of ['pdf-lib', 'forme']) {
   });
 }
 
+test('Server-Timing: a metric a step, in order, the parts within the whole, and the road kept on a kept page', async () => {
+  for (let i = 0; i < 2; i++) {
+    const res = await post(server.url, { 'caster.writer': 'forme' });
+    assert.equal(res.status, 200, await res.clone().text());
+    await res.arrayBuffer();
+    const metrics = timing(res.headers.get('server-timing'));
+    assert.deepEqual(metrics[0], { name: 'road', desc: 'kept' });
+    assert.ok(!metrics.some((m) => m.name === 'worker'), 'one worker names none');
+    const names = metrics.filter((m) => !/^(print|caster)-/.test(m.name)).map((m) => m.name);
+    assert.deepEqual(names, ['road', 'read', 'queue', 'folder', 'page', 'load', 'cut', 'print', 'total']);
+    wholeHoldsParts(metrics);
+  }
+});
+
 test('a print under caster.standard=none says it claims PDF 2.0 alone', async () => {
   const res = await fetch(`${server.url}/print`, { method: 'POST', body: paperForm({ 'caster.standard': 'none' }) });
   assert.equal(res.status, 200, await res.clone().text());
@@ -98,7 +113,7 @@ test('two prints at once both succeed, the second starting after the first ends'
   const post = () => fetch(`${server.url}/print`, { method: 'POST', body: paperForm({ created: CREATED }) });
   const both = await Promise.all([post(), post()]);
   assert.deepEqual(both.map((r) => r.status), [200, 200]);
-  const events = log.filter((l) => / started$| 200,/.test(l)).map((l) => (l.endsWith('started') ? 'start' : 'end'));
+  const events = log.filter((l) => / started$|: 200,/.test(l)).map((l) => (l.endsWith('started') ? 'start' : 'end'));
   assert.deepEqual(events, ['start', 'end', 'start', 'end']);
 });
 
@@ -132,8 +147,45 @@ test('a crashed browser: the next print succeeds after a restart, and /health sa
 test('restartAfter 2: three prints, one restart, after the second', async () => {
   const { s, lines } = await own({ restartAfter: 2 });
   for (let i = 0; i < 3; i++) assert.equal((await post(s.url)).status, 200);
-  const events = lines.filter((l) => /restarting the browser| 200,/.test(l)).map((l) => (/restarting/.test(l) ? 'restart' : 'print'));
+  const events = lines.filter((l) => /restarting the browser|: 200,/.test(l)).map((l) => (/restarting/.test(l) ? 'restart' : 'print'));
   assert.deepEqual(events, ['print', 'print', 'restart', 'print']);
+});
+
+test('two workers: two prints at once run together, each the file one worker gives, and /health counts the workers', { timeout: 120_000 }, async () => {
+  const { s, lines } = await own({ workers: 2 });
+  const [a, b] = await Promise.all([post(s.url), post(s.url)]);
+  assert.deepEqual([a!.status, b!.status], [200, 200]);
+  assert.deepEqual([a!, b!].map((r) => timing(r.headers.get('server-timing')).find((m) => m.name === 'worker')?.desc).sort(), ['1', '2']);
+  // The second waited for no one: each had a worker of its own.
+  for (const r of [a!, b!]) assert.ok(timing(r.headers.get('server-timing')).find((m) => m.name === 'queue')!.dur! < 50);
+  const one = Buffer.from(await (await post(server.url)).arrayBuffer());
+  for (const r of [a!, b!]) assert.ok(Buffer.from(await r.arrayBuffer()).equals(one));
+  // The second began before the first ended, and on the other worker.
+  const events = lines.filter((l) => / started|: 200,/.test(l)).map((l) => (/started/.test(l) ? /worker (\d)/.exec(l)![1] : 'end'));
+  assert.deepEqual(events, ['1', '2', 'end', 'end']);
+  assert.equal(((await (await fetch(`${s.url}/health`)).json()) as { workers: number }).workers, 2);
+});
+
+test('keepFonts: the writer keeps the fonts between prints, and every file is the one printed without it', { timeout: 120_000 }, async () => {
+  const { s } = await own({ keepFonts: true });
+  const forme = { 'caster.writer': 'forme' };
+  const one = Buffer.from(await (await post(server.url, forme)).arrayBuffer());
+  for (let i = 0; i < 3; i++) {
+    const res = await post(s.url, forme);
+    assert.equal(res.status, 200, await res.clone().text());
+    assert.ok(Buffer.from(await res.arrayBuffer()).equals(one), `print ${i + 1} with the fonts kept is not the file printed without`);
+  }
+});
+
+test('two workers, restartAfter 4: the first restarts after two prints, the server stays up, and the next print goes to the other', { timeout: 120_000 }, async () => {
+  const { s, lines } = await own({ workers: 2, restartAfter: 4 });
+  for (let i = 0; i < 2; i++) assert.equal((await post(s.url)).status, 200);
+  assert.equal((await upTo(s.url)).status, 'up');
+  assert.equal((await post(s.url)).status, 200);
+  const events = lines.filter((l) => /restarting the browser| started/.test(l)).map((l) => `${/restarting/.test(l) ? 'restart' : 'print'} ${/worker (\d)/.exec(l)![1]}`);
+  // The restart's line is written once the old browser is closed, so it and the third print's come in either order.
+  assert.deepEqual(events.slice(0, 2), ['print 1', 'print 1']);
+  assert.deepEqual(events.slice(2).sort(), ['print 2', 'restart 1']);
 });
 
 test('a print over the time limit is a 504 within 2 s, and the next print succeeds', async () => {
@@ -157,7 +209,7 @@ test('the warm-up works: the first forme write is under 1.5 times the median of 
   const emit: number[] = [];
   for (let i = 0; i < 5; i++) {
     assert.equal((await post(s.url, { 'caster.writer': 'forme' })).status, 200);
-    const line = lines.filter((l) => / 200,/.test(l)).at(-1)!;
+    const line = lines.filter((l) => /: 200,/.test(l)).at(-1)!;
     emit.push(Number(/\(write ([\d.]+) ms\)/.exec(line)![1]));
   }
   const rest = emit.slice(1).sort((a, b) => a - b);
@@ -268,7 +320,11 @@ test('a document with a script of its own takes a page of its own, the log says 
   const { s, lines } = await own({});
   const withScript = paperForm({ created: CREATED }, 'index.html');
   withScript.append('index.html', new Blob([fs.readFileSync(SAMPLE, 'utf8').replace('</body>', '<script>document.title = "scripted";</script></body>')]), 'index.html');
-  assert.equal((await fetch(`${s.url}/print`, { method: 'POST', body: withScript })).status, 200);
+  const fresh = await fetch(`${s.url}/print`, { method: 'POST', body: withScript });
+  assert.equal(fresh.status, 200);
+  const metrics = timing(fresh.headers.get('server-timing'));
+  assert.deepEqual(metrics[0], { name: 'road', desc: 'fresh' });
+  assert.ok(metrics.some((m) => m.name === 'close'), 'a page of its own is closed, and timed');
   assert.equal((await post(s.url)).status, 200);
   const roads = lines.filter((l) => / road /.test(l)).map((l) => /road (\w+)/.exec(l)![1]);
   assert.deepEqual(roads.slice(-2), ['fresh', 'kept']);

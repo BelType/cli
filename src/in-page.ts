@@ -72,27 +72,35 @@ export type Deferral = { path: string; feature: string; paintedAs: string };
 /** What Caster's report says the file claims (*the printer guesses, says so, and withdraws the claim*, Caster's DESIGN.md S90): `'pdfua2'` a PDF/UA-2 file, `'tagged'` a tagged PDF 2.0 that claims nothing more. */
 export type Conformance = 'pdfua2' | 'tagged';
 
+/** Where the page's time went in {@link printInPage}, in milliseconds of the page's clock. */
+export type InPageParts = { ready: number; settled: number; caster: number; encode: number; page: number };
+
 /** What Caster's report says of its own time, as the trace carries it. */
 export type CasterTrace = { ms: Record<string, number>; timing: unknown; fonts: { id: string; ms: unknown }[] };
 
 /**
  * Caster prints the presented pages; the bytes cross back as base64, the one form `evaluate` carries intact.
  *
- * @param run - `options` is the resolved Caster flags; `created` is the instant the file says it was made, absent for the wall clock; `sharedWriter` has forme write through a `SharedWorker` the page opens (Caster's `formeSharedWorkerUrl()`), so a host that keeps the page's browser alive keeps the writer warm. `printMs` in the answer is Caster's own time in the page, before the bytes are encoded; `confessions` is the report's, empty from a Caster that keeps none.
+ * @param run - `options` is the resolved Caster flags; `created` is the instant the file says it was made, absent for the wall clock; `sharedWriter` has forme write through a `SharedWorker` the page opens (Caster's `formeSharedWorkerUrl()`), so a host that keeps the page's browser alive keeps the writer warm; `keepBlobs` asks that worker to keep the font programs and pictures it has checked between prints and has the page send only what it lacks (Caster's `formeKeepsBlobs`), ignored without `sharedWriter`. `printMs` in the answer is Caster's own time in the page, before the bytes are encoded; `parts` splits the page's whole time into `ready` (Caster's module and the writer's port), `settled` (the wait for Cicero's `settled()`), `caster` (`print()` itself) and `encode` (the bytes to base64), with `page` the whole, so a host can tell the crossing from what the page did; `confessions` is the report's, empty from a Caster that keeps none.
  */
-export async function printInPage(run: { options: Record<string, unknown>; created?: string; sharedWriter?: boolean }): Promise<{ base64: string; pages: number; words: number; warnings: unknown[]; deferred: Deferral[]; conformance: Conformance; printMs: number; caster: CasterTrace; confessions: Confession[] } | Refusal> {
+export async function printInPage(run: { options: Record<string, unknown>; created?: string; sharedWriter?: boolean; keepBlobs?: boolean }): Promise<{ base64: string; pages: number; words: number; warnings: unknown[]; deferred: Deferral[]; conformance: Conformance; printMs: number; parts: InPageParts; caster: CasterTrace; confessions: Confession[] } | Refusal> {
   try {
     const t0 = performance.now();
     // @ts-expect-error a URL the page resolves, not a module the checker can find. A literal on purpose: a computed `import()` is wrapped by `rewriteRelativeImportExtensions` in a helper the page does not have.
     const caster = await import('/_beltype/caster/src/index.js');
     const formePort = run.sharedWriter ? new SharedWorker(caster.formeSharedWorkerUrl(), { type: 'module', name: 'forme' }).port : undefined;
+    const ta = performance.now();
     await (window as any).__beltypeCicero?.settled?.(); // the printer waits: Caster refuses pages that were replaced while it read them
-    const printed = await caster.print({ document, ...(run.created !== undefined ? { created: run.created } : {}), ...(formePort ? { formePort } : {}) }, run.options);
-    const printMs = performance.now() - t0;
+    const t1 = performance.now();
+    const printed = await caster.print({ document, ...(run.created !== undefined ? { created: run.created } : {}), ...(formePort ? { formePort, ...(run.keepBlobs ? { formeKeepsBlobs: true } : {}) } : {}) }, run.options);
+    const t2 = performance.now();
+    const printMs = t2 - t0;
     const bytes: Uint8Array = printed.bytes;
     let binary = '';
     for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    return { base64: btoa(binary), pages: printed.report.timing?.pages ?? 0, words: printed.report.timing?.words ?? 0, warnings: printed.report.warnings ?? [], deferred: printed.report.deferred ?? [], conformance: printed.report.conformance, printMs, confessions: printed.report.confessions ?? [], caster: { ms: printed.report.ms ?? {}, timing: printed.report.timing ?? null, fonts: (printed.report.emission?.faces ?? []).map((f: { id: string; ms?: unknown }) => ({ id: f.id, ms: f.ms ?? null })) } };
+    const base64 = btoa(binary);
+    const t3 = performance.now();
+    return { base64, parts: { ready: ta - t0, settled: t1 - ta, caster: t2 - t1, encode: t3 - t2, page: t3 - t0 }, pages: printed.report.timing?.pages ?? 0, words: printed.report.timing?.words ?? 0, warnings: printed.report.warnings ?? [], deferred: printed.report.deferred ?? [], conformance: printed.report.conformance, printMs, confessions: printed.report.confessions ?? [], caster: { ms: printed.report.ms ?? {}, timing: printed.report.timing ?? null, fonts: (printed.report.emission?.faces ?? []).map((f: { id: string; ms?: unknown }) => ({ id: f.id, ms: f.ms ?? null })) } };
   } catch (error) {
     return { refused: String((error as Error | undefined)?.message ?? error), at: 'print' };
   }
