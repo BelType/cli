@@ -113,7 +113,7 @@ test('two prints at once both succeed, the second starting after the first ends'
   const post = () => fetch(`${server.url}/print`, { method: 'POST', body: paperForm({ created: CREATED }) });
   const both = await Promise.all([post(), post()]);
   assert.deepEqual(both.map((r) => r.status), [200, 200]);
-  const events = log.filter((l) => / started$| 200,/.test(l)).map((l) => (l.endsWith('started') ? 'start' : 'end'));
+  const events = log.filter((l) => / started$|: 200,/.test(l)).map((l) => (l.endsWith('started') ? 'start' : 'end'));
   assert.deepEqual(events, ['start', 'end', 'start', 'end']);
 });
 
@@ -147,7 +147,7 @@ test('a crashed browser: the next print succeeds after a restart, and /health sa
 test('restartAfter 2: three prints, one restart, after the second', async () => {
   const { s, lines } = await own({ restartAfter: 2 });
   for (let i = 0; i < 3; i++) assert.equal((await post(s.url)).status, 200);
-  const events = lines.filter((l) => /restarting the browser| 200,/.test(l)).map((l) => (/restarting/.test(l) ? 'restart' : 'print'));
+  const events = lines.filter((l) => /restarting the browser|: 200,/.test(l)).map((l) => (/restarting/.test(l) ? 'restart' : 'print'));
   assert.deepEqual(events, ['print', 'print', 'restart', 'print']);
 });
 
@@ -161,7 +161,7 @@ test('two workers: two prints at once run together, each the file one worker giv
   const one = Buffer.from(await (await post(server.url)).arrayBuffer());
   for (const r of [a!, b!]) assert.ok(Buffer.from(await r.arrayBuffer()).equals(one));
   // The second began before the first ended, and on the other worker.
-  const events = lines.filter((l) => / started| 200,/.test(l)).map((l) => (/started/.test(l) ? /worker (\d)/.exec(l)![1] : 'end'));
+  const events = lines.filter((l) => / started|: 200,/.test(l)).map((l) => (/started/.test(l) ? /worker (\d)/.exec(l)![1] : 'end'));
   assert.deepEqual(events, ['1', '2', 'end', 'end']);
   assert.equal(((await (await fetch(`${s.url}/health`)).json()) as { workers: number }).workers, 2);
 });
@@ -198,7 +198,7 @@ test('the warm-up works: the first forme write is under 1.5 times the median of 
   const emit: number[] = [];
   for (let i = 0; i < 5; i++) {
     assert.equal((await post(s.url, { 'caster.writer': 'forme' })).status, 200);
-    const line = lines.filter((l) => / 200,/.test(l)).at(-1)!;
+    const line = lines.filter((l) => /: 200,/.test(l)).at(-1)!;
     emit.push(Number(/\(write ([\d.]+) ms\)/.exec(line)![1]));
   }
   const rest = emit.slice(1).sort((a, b) => a - b);
