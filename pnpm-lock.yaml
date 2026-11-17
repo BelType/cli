@@ -9,11 +9,11 @@ importers:
   .:
     dependencies:
       '@beltype/caster':
-        specifier: 0.2.7
-        version: 0.2.7
+        specifier: 0.2.8
+        version: 0.2.8
       '@beltype/cicero':
-        specifier: 0.1.14
-        version: 0.1.14
+        specifier: 0.1.16
+        version: 0.1.16
       '@beltype/common':
         specifier: 0.1.2
         version: 0.1.2
@@ -48,12 +48,12 @@ packages:
   '@acemir/cssom@0.9.32':
     resolution: {integrity: sha512-OijrAUu7rrJhSIoHNg6LMPS5e344nwUHA+1EFYYjrh64D+GmytUsfBQjci45TjT+rd5Spsp8B5xsZDT+TgyXXQ==}
 
-  '@beltype/caster@0.2.7':
-    resolution: {integrity: sha512-TWoZQvkmaHrJQsSVeyOoOFIkAVED2CS28HD/R1chqr+Mp8nMaB+4Dhi0eYNi7LCHB7L0BjieWf40YLS6UM27CQ==}
+  '@beltype/caster@0.2.8':
+    resolution: {integrity: sha512-5gE13ifoXq9HTu/BcI9STCscE+FG2jOlH81uVALquT9AiSWzgcbQVUew+AHOaRS8ckojnC6eSJ2rQ4uBs0mhyg==}
     engines: {node: '>=22'}
 
-  '@beltype/cicero@0.1.14':
-    resolution: {integrity: sha512-cfmzvltSvbpDFVPVl4DGbNc0oDpU4wBGuP6ElM9Z9Qk/Lt086OPuonLDv+bqbFLTiTCCAuLdiJeoxub053QHnA==}
+  '@beltype/cicero@0.1.16':
+    resolution: {integrity: sha512-Fs66LwxovJ4KzpvvV6WjE+K40CvK6aMw4TYbBvcq0e1ZpFuM2DUfBcwQ5p55P9gYIHE0ztZSVPB9eHg7V/kLog==}
     engines: {node: '>=22'}
 
   '@beltype/common@0.1.2':
@@ -574,11 +574,11 @@ snapshots:
 
   '@acemir/cssom@0.9.32': {}
 
-  '@beltype/caster@0.2.7':
+  '@beltype/caster@0.2.8':
     dependencies:
       '@beltype/common': 0.1.2
 
-  '@beltype/cicero@0.1.14':
+  '@beltype/cicero@0.1.16':
     dependencies:
       '@beltype/common': 0.1.2
       css-tree: 3.2.1
