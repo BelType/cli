@@ -1,6 +1,6 @@
 {
   "name": "@beltype/cli",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "beltype, the command line: a finished HTML document printed to PDF by Cicero and Caster in Chromium's headless shell.",
   "type": "module",
   "license": "MIT",
@@ -34,7 +34,7 @@
     ]
   },
   "dependencies": {
-    "@beltype/caster": "0.2.8",
+    "@beltype/caster": "0.2.9",
     "@beltype/cicero": "0.1.16",
     "@beltype/common": "0.1.2",
     "playwright-core": "1.63.0"

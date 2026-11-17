@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.13 — 2026-11-17
+
+- **Pins to Caster 0.2.9.** Under the PDF/UA-2 claim a `<blockquote>`, a `<code>` and a `<q>` are tagged `BlockQuote`, `Code` and `Quote`, a table of contents (`role="doc-toc"`) is a `TOC` of `TOCI`, a link inside the document is a `Reference` naming its target, and a footnote and its call name each other, all in the PDF 1.7 namespace as the standard asks (ruled 2026-11-17: "Tags first", "Yes, Reference"). The pages do not change; the bytes of a file holding any of these do. Measured 2026-11-17 by the testbench's probe, four short runs of each in alternation: bills and the paper print at the same rate as under Caster 0.2.8, within 0.5 %.
+
 ## 0.1.12 — 2026-11-17
 
 - **Pins to Cicero 0.1.16 and Caster 0.2.8.** An image standing directly in `<body>` prints, where it was refused; a table's columns count every row on every page; and Caster's cheaper print: a face's bytes decoded once by content, forme built for speed, and the kept blobs behind `--keep-fonts`.
