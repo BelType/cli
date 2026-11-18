@@ -14,9 +14,9 @@ import { BelTypeError, ValidationError } from '@beltype/common/errors';
 import { checkLines, gate } from './check.ts';
 import { cliFlags, createdFromEnv, flagsHelp, parseFlagArgs } from './flags.ts';
 import { print } from './print.ts';
-import { serve } from './serve.ts';
+import { serve, MERGE_ROADS, type MergeRoad } from './serve.ts';
 
-const USAGE = 'usage: beltype serve [--host 127.0.0.1] [--port 3000] [--max-upload 50] [--timeout 60] [--restart-after 100] [--workers 1] [--keep-fonts] [--allowed-hosts <name[:port],…>] [--no-sandbox]\n       beltype print <file.html> [-o <file.pdf>] [--printer caster|chromium] [--check[=report]] [--trace <file.json>] [--no-sandbox] [--flag <owner>.<name>=<value>]...';
+const USAGE = 'usage: beltype serve [--host 127.0.0.1] [--port 3000] [--max-upload 50] [--timeout 60] [--restart-after 100] [--workers 1] [--merge-road kept|seated|fresh] [--keep-fonts] [--allowed-hosts <name[:port],…>] [--no-sandbox]\n       beltype print <file.html> [-o <file.pdf>] [--printer caster|chromium] [--check[=report]] [--trace <file.json>] [--no-sandbox] [--flag <owner>.<name>=<value>]...';
 
 async function serveVerb(argv: string[]): Promise<void> {
   const { values } = parseArgs({ args: argv, options: {
@@ -26,12 +26,14 @@ async function serveVerb(argv: string[]): Promise<void> {
     timeout: { type: 'string', default: '60' },
     'restart-after': { type: 'string', default: '100' },
     workers: { type: 'string', default: '1' },
+    'merge-road': { type: 'string', default: 'kept' },
     'keep-fonts': { type: 'boolean' },
     'allowed-hosts': { type: 'string' },
     'no-sandbox': { type: 'boolean' }
   } });
   const allowedHosts = (values['allowed-hosts'] ?? '').split(',').map((h) => h.trim()).filter(Boolean);
   for (const h of allowedHosts) if (!/^([a-z0-9.-]+|\[[0-9a-f:.]+\])(:\d+)?$/i.test(h)) throw new ValidationError(`beltype serve: --allowed-hosts takes names as a request's Host header spells them, name or name:port, comma-separated; got "${h}".`);
+  if (!MERGE_ROADS.includes(values['merge-road'] as MergeRoad)) throw new ValidationError(`beltype serve: --merge-road is one of ${MERGE_ROADS.join(', ')}; got "${values['merge-road']}".`);
   const number = (name: string, raw: string, min: number) => {
     if (!/^\d+$/.test(raw) || Number(raw) < min) throw new ValidationError(`beltype serve: --${name} is a whole number of at least ${min}; got "${raw}".`);
     return Number(raw);
@@ -43,6 +45,7 @@ async function serveVerb(argv: string[]): Promise<void> {
     timeout: number('timeout', values.timeout!, 1) * 1000,
     restartAfter: number('restart-after', values['restart-after']!, 1),
     workers: number('workers', values.workers!, 1),
+    mergeRoad: values['merge-road'] as MergeRoad,
     keepFonts: values['keep-fonts'] === true,
     sandbox: !values['no-sandbox'],
     allowedHosts

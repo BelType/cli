@@ -12,6 +12,11 @@ import { print } from '../src/print.ts';
 import { serve, keptRoad, WARMUP, WARMUP_FONT } from '../src/serve.ts';
 import { timing, wholeHoldsParts } from './server-timing.ts';
 
+// A temporary folder of this file's own. The timeout test counts the folders its server left in it, and the other test files, each a process run beside this one, start servers whose prints make theirs in the shared one (seen 2026-11-18: another file's folder counted as this server's leak).
+const TMP = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'beltype-test-'));
+process.env['TMPDIR'] = TMP;
+process.on('exit', () => fs.rmSync(TMP, { recursive: true, force: true }));
+
 const SAMPLE = specimen('paper').entry;
 const FOLDER = path.dirname(SAMPLE);
 const CREATED = '2026-11-03T12:00:00.000Z';

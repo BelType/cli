@@ -3,33 +3,13 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import * as mupdf from 'mupdf';
 import { parseHTML } from 'linkedom';
 import { openBlock } from 'prosemirror-stores/graph';
 import { writeMicrodata } from 'prosemirror-stores/microdata';
-import { specimen } from '@beltype/specimens';
 import { serve, WARMUP_FONT } from '../src/serve.ts';
-import type { Cell } from '../src/merge-tab.ts';
+import { CREATED, TEMPLATE, table, billForm } from './bolletta.ts';
 import { timing, wholeHoldsParts } from './server-timing.ts';
-
-const CREATED = '2026-11-07T00:00:00.000Z';
-const BILL = specimen('bolletta').dir;
-const TEMPLATE = fs.readFileSync(path.join(BILL, 'index.html'), 'utf8');
-
-/** A table from the specimen's `merge/`, each decimal column typed by the CSVW metadata beside it. */
-function table(file: string): Record<string, Cell>[] {
-  const meta = JSON.parse(fs.readFileSync(path.join(BILL, 'merge', `${file}-metadata.json`), 'utf8')) as { tableSchema: { columns: { name: string; datatype?: { base?: string; format?: { decimalChar?: string; groupChar?: string } } }[] } };
-  const columns = new Map(meta.tableSchema.columns.map((c) => [c.name, c.datatype]));
-  const [head, ...lines] = fs.readFileSync(path.join(BILL, 'merge', file), 'utf8').trimEnd().split('\n').map((l) => l.split(';'));
-  return lines.map((cells) => Object.fromEntries(head!.map((name, i): [string, Cell] => {
-    const text = cells[i] ?? '';
-    const type = columns.get(name);
-    if (type?.base !== 'decimal') return [name, text];
-    const plain = text.split(type.format?.groupChar ?? '\0').join('').replace(type.format?.decimalChar ?? '.', '.');
-    return [name, { value: Number(plain), text }];
-  })));
-}
 
 const readings = table('letture.csv');
 const customers = table('clienti.csv').map((row) => {
@@ -62,17 +42,6 @@ function mergedHtml(c: (typeof customers)[number]): string {
   repeat.remove();
   block.remove();
   return document.toString();
-}
-
-const assets = fs.readdirSync(BILL, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => path.relative(BILL, path.join(e.parentPath, e.name)).split(path.sep).join('/')).filter((n) => n !== 'index.html' && !n.startsWith('merge/') && !n.includes('.csv'));
-
-function billForm(html: string): FormData {
-  const form = new FormData();
-  form.append('index.html', new Blob([html]), 'index.html');
-  for (const name of assets) form.append(name, new Blob([fs.readFileSync(path.join(BILL, name))]), path.basename(name));
-  form.append('caster.writer', 'forme');
-  form.append('created', CREATED);
-  return form;
 }
 
 const log: string[] = [];
@@ -199,4 +168,48 @@ test('the door refuses by name', async () => {
   const after = await printData(template, { ...customers[0], created: CREATED });
   assert.equal(after.status, 200);
   assert.deepEqual(roads(), ['merge seated']);
+});
+
+test('the three roads give the same bytes: seated writes the template anew for every customer, fresh gives each a page of their own', async () => {
+  const kept = await upload(billForm(TEMPLATE));
+  const order = [2, 0, 1, 1, 0];
+  const want: Buffer[] = [];
+  for (const k of order) want.push(await bytes(await printData(kept, { ...customers[k], created: CREATED })));
+  for (const mergeRoad of ['seated', 'fresh'] as const) {
+    const other = await serve({ host: '127.0.0.1', port: 0, maxUpload: 50 * 1024 * 1024, timeout: 60_000, restartAfter: 1000, mergeRoad, log: () => {} });
+    try {
+      const made = await fetch(`${other.url}/templates`, { method: 'POST', body: billForm(TEMPLATE) });
+      const { template } = (await made.json()) as { template: string };
+      for (const [n, k] of order.entries()) {
+        const res = await fetch(`${other.url}/templates/${template}/print`, { method: 'POST', body: JSON.stringify({ ...customers[k], created: CREATED }) });
+        assert.ok((await bytes(res)).equals(want[n]!), `customer ${k} on the ${mergeRoad} road differs from the kept road`);
+        const metrics = timing(res.headers.get('server-timing'));
+        assert.equal(metrics[0]!.desc, `merge ${mergeRoad}`);
+        assert.equal(metrics.some((m) => m.name === 'close'), mergeRoad === 'fresh');
+        wholeHoldsParts(metrics);
+      }
+    } finally {
+      await other.close();
+    }
+  }
+});
+
+test('a page number read in a box no customer changes is the customer\'s own on the seated and the fresh road', async () => {
+  // On the kept road it is the number of the customer the box was last made for: Caster makes the pseudo-element a real element after the cut, and the merge sees a box that did not change (measured 2026-11-18; the README's `--merge-road` says so).
+  const toc = (road: 'seated' | 'fresh') => serve({ host: '127.0.0.1', port: 0, maxUpload: 50 * 1024 * 1024, timeout: 60_000, restartAfter: 1000, mergeRoad: road, log: () => {} });
+  const rows = (n: number) => ({ righe: Array.from({ length: n }, (_, i) => ({ testo: `riga ${i + 1}` })) });
+  for (const road of ['seated', 'fresh'] as const) {
+    const other = await toc(road);
+    try {
+      const made = await fetch(`${other.url}/templates`, { method: 'POST', body: small('<p class="toc"><a href="#end">The end</a></p><p itemprop="nome"></p><section><template data-repeat="righe"><p><span itemprop="testo"></span></p></template></section><h2 id="end">End</h2>', '<style>.toc a::after { content: " at page " target-counter(attr(href), page) }</style>') });
+      const { template } = (await made.json()) as { template: string };
+      const at: string[] = [];
+      for (const n of [2, 200, 3]) at.push(/The end at page \d+/.exec(pdfText(await bytes(await fetch(`${other.url}/templates/${template}/print`, { method: 'POST', body: JSON.stringify({ values: { nome: `Cliente ${n}` }, rows: rows(n) }) }))))?.[0] ?? 'no line');
+      assert.equal(at[0], 'The end at page 1', road);
+      assert.notEqual(at[1], 'The end at page 1', `${road}: the second customer's end is pages later`);
+      assert.equal(at[2], 'The end at page 1', road);
+    } finally {
+      await other.close();
+    }
+  }
 });
