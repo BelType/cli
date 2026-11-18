@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.16 — 2026-11-18
+
+- **Pins to Caster 0.2.12: transparent text is invisible text** (2026-11-18, Egildo's ruling of that day, *transparent text is invisible text* in `codeberg.org/BelType/decisions`). `color: transparent` text printed black; it is now written as PDF's invisible text, its words still searchable and tagged. Translucent text and rules keep their alpha, and text takes the colour the browser paints it with, `-webkit-text-fill-color`. A file with neither prints the same bytes as before.
+
 ## 0.1.15 — 2026-11-18
 
 - **The print says the archival claim** (2026-11-18, Egildo's "Yes, name it"). `X-Beltype-Standard` and `beltype print`'s line name every claim the file makes: `pdf-2.0; pdf-ua-2; pdf-a-4` under `caster.standard=ua-2,a-4`, `pdf-2.0; pdf-a-4` under `a-4` alone, and what they read before everywhere else. Pins to Caster 0.2.11, whose report carries the claim; no file's bytes change.
