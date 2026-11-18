@@ -193,3 +193,23 @@ test('the three roads give the same bytes: seated writes the template anew for e
     }
   }
 });
+
+test('a page number read in a box no customer changes is the customer\'s own on the seated and the fresh road', async () => {
+  // On the kept road it is the number of the customer the box was last made for: Caster makes the pseudo-element a real element after the cut, and the merge sees a box that did not change (measured 2026-11-18; the README's `--merge-road` says so).
+  const toc = (road: 'seated' | 'fresh') => serve({ host: '127.0.0.1', port: 0, maxUpload: 50 * 1024 * 1024, timeout: 60_000, restartAfter: 1000, mergeRoad: road, log: () => {} });
+  const rows = (n: number) => ({ righe: Array.from({ length: n }, (_, i) => ({ testo: `riga ${i + 1}` })) });
+  for (const road of ['seated', 'fresh'] as const) {
+    const other = await toc(road);
+    try {
+      const made = await fetch(`${other.url}/templates`, { method: 'POST', body: small('<p class="toc"><a href="#end">The end</a></p><p itemprop="nome"></p><section><template data-repeat="righe"><p><span itemprop="testo"></span></p></template></section><h2 id="end">End</h2>', '<style>.toc a::after { content: " at page " target-counter(attr(href), page) }</style>') });
+      const { template } = (await made.json()) as { template: string };
+      const at: string[] = [];
+      for (const n of [2, 200, 3]) at.push(/The end at page \d+/.exec(pdfText(await bytes(await fetch(`${other.url}/templates/${template}/print`, { method: 'POST', body: JSON.stringify({ values: { nome: `Cliente ${n}` }, rows: rows(n) }) }))))?.[0] ?? 'no line');
+      assert.equal(at[0], 'The end at page 1', road);
+      assert.notEqual(at[1], 'The end at page 1', `${road}: the second customer's end is pages later`);
+      assert.equal(at[2], 'The end at page 1', road);
+    } finally {
+      await other.close();
+    }
+  }
+});
