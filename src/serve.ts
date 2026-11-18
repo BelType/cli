@@ -6,7 +6,7 @@
  *
  * **One kept print page, for a document with no script of its own.** A print re-seats the kept page as Caster's kept frame does (`document.open()` keeps the `Window`, so the realm, Caster's registry and the companions' modules stay warm; *the printer runs in the realm it prints*, Caster's DESIGN.md S20, S87, S89): its routes are swapped for the print's folder, the served document is written in, and each module script the document names gets a query of its own. That page is shared only by a document whose text, its JSON-LD data blocks aside, holds none of `<script`, `<iframe`, `<object`, `<embed`, `<frame`, `<portal`, `javascript:` or an `on…=` attribute ({@link keptRoad}); any other gets a new page, and the log line names the road. A print that fails or times out closes the kept page, and the next opens a new one.
  *
- * **A mail merge, on the same page.** `POST /templates` takes a template's folder once, and `POST /templates/<id>/print` takes one customer's values and rows as JSON. The first customer seats the template and merges in the tab; each later one replaces only the top-level boxes that changed and resumes the cut (`merge-tab.ts`), which keeps the sheets, the faces and the rewrite, and leaves nothing of the customer before. Where the shape of the body changed, or Cicero will not promise the patch, the template is seated again and the log line says why. Measured 2026-11-07 on the bolletta: the PDF byte for byte the folder route's, and 30 to 50 ms less on a 61-day bill (codeberg.org/BelType/cli issue 2).
+ * **A mail merge, on the same page.** `POST /templates` takes a template's folder once, and `POST /templates/<id>/print` takes one customer's values and rows as JSON. The first customer seats the template and merges in the tab; each later one replaces only the top-level boxes that changed and resumes the cut (`merge-tab.ts`), which keeps the sheets, the faces and the rewrite, and leaves nothing of the customer before. Where the shape of the body changed, or Cicero will not promise the patch, the template is seated again and the log line says why. Measured 2026-11-07 on the bolletta: the PDF byte for byte the folder route's, and 30 to 50 ms less on a 61-day bill (codeberg.org/BelType/cli issue 2). That is the `kept` road, the default; `mergeRoad` (`--merge-road`) chooses how much of the customer before is carried: `seated` writes the template anew for every customer on the same page, and `fresh` gives each customer a page of their own ({@link MergeRoad}).
  *
  * **One at a time in each worker, and kept alive.** A worker is the browser, context, holder page and kept page above, with a promise chain that runs its prints in turn; `--workers` says how many the server runs, one unless told, and a print goes to the worker with the least waiting, a customer to one that has their template seated where two wait alike. A worker's browser is closed and started again (routes, holder page, warm-up) after `restartAfter` prints and after a print that failed with a 500, and a disconnected browser is started again before the next print; the workers' first restarts are spread, so the server slows and does not stop. The warm-up prints a built-in document twice under forme, so the first request is warm too.
  *
@@ -27,8 +27,14 @@ import { ARGS, ORIGIN, VIEWPORT, documentAssets, servedHtml, routeCompanions, ro
 import { keepMergeInPage, reseatInPage, seatMergeInPage, type Conformance, type Refusal } from './in-page.ts';
 import type { MergeData } from './merge-tab.ts';
 
-/** `maxUpload` is in bytes and `timeout` in milliseconds here; the command line speaks megabytes and seconds. `sandbox` false launches Chromium without its sandbox, for a container that runs as root. `allowedHosts` are the `Host` values answered besides the bound address, each `name` (any port) or `name:port`; a wildcard bind answers them alone and will not start without one. `workers` is how many prints run at once, each in a browser of its own, one where it is not given. `keepFonts` has each worker's writer keep the font programs and pictures it has checked between prints (Caster's `formeKeepsBlobs`), under `caster.writer=forme` only; the file is the same either way. `onBrowser` is told each browser as it starts, for tests. */
-export type ServeOptions = { host: string; port: number; maxUpload: number; timeout: number; restartAfter: number; workers?: number; keepFonts?: boolean; sandbox?: boolean; allowedHosts?: string[]; log?: (line: string) => void; onBrowser?: (browser: Browser) => void };
+/** `maxUpload` is in bytes and `timeout` in milliseconds here; the command line speaks megabytes and seconds. `sandbox` false launches Chromium without its sandbox, for a container that runs as root. `allowedHosts` are the `Host` values answered besides the bound address, each `name` (any port) or `name:port`; a wildcard bind answers them alone and will not start without one. `workers` is how many prints run at once, each in a browser of its own, one where it is not given. `mergeRoad` is how much of the customer before a mail merge's kept page carries to the next ({@link MergeRoad}), `kept` where it is not given. `keepFonts` has each worker's writer keep the font programs and pictures it has checked between prints (Caster's `formeKeepsBlobs`), under `caster.writer=forme` only; the file is the same either way. `onBrowser` is told each browser as it starts, for tests. */
+/**
+ * What a mail merge's customer finds of the customer before: under `kept` the page, with only the top-level boxes that changed replaced; under `seated` the page's `Window` alone, the template written anew as a document for every customer; under `fresh` nothing, a page of their own, closed after.
+ */
+export type MergeRoad = 'kept' | 'seated' | 'fresh';
+export const MERGE_ROADS: readonly MergeRoad[] = ['kept', 'seated', 'fresh'];
+
+export type ServeOptions = { host: string; port: number; maxUpload: number; timeout: number; restartAfter: number; workers?: number; mergeRoad?: MergeRoad; keepFonts?: boolean; sandbox?: boolean; allowedHosts?: string[]; log?: (line: string) => void; onBrowser?: (browser: Browser) => void };
 
 const HOLDER_PATH = '/_beltype/holder.html';
 const HOLDER = `<!doctype html><html><head><meta charset="utf-8"><title>holder</title></head><body><script type="module">
@@ -44,7 +50,7 @@ const paragraph = (n: number) => Array.from({ length: 90 }, (_, i) => WORDS[(i *
 export const WARMUP = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Warm-up</title><style>@font-face { font-family: Warm; src: url(warm.woff2) format("woff2"); font-weight: 200 900 } @page { size: A4; margin: 20mm } body { font: 11pt/1.4 Warm }</style></head><body><h1>Warm-up</h1>${Array.from({ length: 16 }, (_, n) => `<p>${paragraph(n)}</p>`).join('')}</body></html>`;
 
 /** One print's road and the milliseconds of each step, by name. */
-type Trace = { road: 'kept' | 'fresh' | 'merge seated' | 'merge kept'; ms: Record<string, number> };
+type Trace = { road: 'kept' | 'fresh' | 'merge seated' | 'merge kept' | 'merge fresh'; ms: Record<string, number> };
 
 /** A template uploaded once: its folder on disk and the run's values. */
 type Template = { id: string; root: string; author: string; given: Given };
@@ -110,6 +116,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
   let started = 0;
   const count = options.workers ?? 1;
   const keepBlobs = options.keepFonts === true;
+  const mergeRoad = options.mergeRoad ?? 'kept';
 
   /**
    * A worker: everything one print needs and no other print may touch while it runs: a browser, its context and routes, the holder page with the shared writer, the kept page with the template seated on it and the faces it has seen, and a promise chain of its own.
@@ -210,13 +217,14 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       }
     };
 
-    /** One customer of `template` on the kept page: the changed boxes replaced where the template is seated, else the template seated and merged. */
+    /** One customer of `template`. On the kept page, under the `kept` road the changed boxes are replaced where the template is seated, else the template is seated and merged, as it is for every customer under `seated`; under `fresh` the template is loaded and merged on a page of the customer's own. */
     const renderMerge = async (template: Template, data: MergeData, created: string | undefined, trace: Trace): Promise<Printed> => {
       const flags = { caster: template.given.caster, cicero: ciceroFlags.resolve(template.given.cicero as never), beltype: cliFlags.resolve(template.given.beltype as never) };
       const mine = new Set<string>();
       const lapped = lapper(trace.ms);
       lapped.start('page');
-      const page = current = kept ?? await openKept();
+      const fresh = mergeRoad === 'fresh';
+      const page = current = fresh ? await context!.newPage() : kept ?? await openKept();
       active = mine;
       lapped.end('page');
       const merged = <T extends object>(answer: T | Refusal): T => {
@@ -226,7 +234,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       try {
         let resumeAt: unknown = null;
         lapped.start('merge');
-        if (seated === template.id) {
+        if (mergeRoad === 'kept' && seated === template.id) {
           const answer = merged(await page.evaluate(keepMergeInPage, data));
           if ('again' in answer) {
             log(`beltype serve: the template is seated again: ${answer.again}`);
@@ -236,22 +244,30 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
             trace.road = 'merge kept';
           }
         }
-        if (seated !== template.id) {
+        if (fresh || mergeRoad === 'seated' || seated !== template.id) {
           lapped.start('load');
-          await page.unrouteAll({ behavior: 'wait' });
           const served = servedHtml(template.author);
-          await routeDocument(page, missing, { root: template.root, docPath: DOC_PATH, served });
-          await page.evaluate(reseatInPage, served.replace(/(<script type="module" src="[^"?]+)"/g, `$1?kept=${++reseats}"`));
+          if (fresh) {
+            page.on('pageerror', (error) => console.warn(`page error: ${error.message}`));
+            await routeDocument(page, missing, { root: template.root, docPath: DOC_PATH, served });
+            await page.goto(ORIGIN + DOC_PATH, { waitUntil: 'load' });
+          } else {
+            seated = null;
+            await page.unrouteAll({ behavior: 'wait' });
+            await routeDocument(page, missing, { root: template.root, docPath: DOC_PATH, served });
+            await page.evaluate(reseatInPage, served.replace(/(<script type="module" src="[^"?]+)"/g, `$1?kept=${++reseats}"`));
+          }
           lapped.end('load');
           lapped.start('merge');
           merged(await page.evaluate(seatMergeInPage, { template: template.author, data }));
-          seated = template.id;
-          trace.road = 'merge seated';
+          if (!fresh) seated = template.id;
+          trace.road = fresh ? 'merge fresh' : 'merge seated';
         }
         lapped.end('merge');
         const printed = await cutAndPrint(page, mine, flags, { sharedWriter: true, keepBlobs, resumeAt, progress: { step: lapped.start, lap: lapped.end }, ...(created !== undefined ? { created } : {}) });
         lapped.end('print');
         if (mine.size) throw refusal(mine, null);
+        if (fresh) { lapped.start('close'); await closePage(page); lapped.end('close'); }
         return printed;
       } catch (error) {
         await closePage(page);
