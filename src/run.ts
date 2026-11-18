@@ -36,7 +36,7 @@ export type RunFlags = { caster: Record<string, unknown>; cicero: Record<string,
 /** What {@link printOnPage} asks beyond the flags. `reseat` is the served document to write into the page's existing document in place of a navigation, for a page kept between prints. `progress` is told each step as it starts and each lap as it ends, for a trace. */
 export type RunOptions = { created?: string; reseat?: string; sharedWriter?: boolean; keepBlobs?: boolean; measures?: boolean; resumeAt?: unknown; progress?: { step(name: string): void; lap(key: string): void; cicero?(measures: Measure[]): void } };
 
-export type Printed = { bytes: Buffer; pages: number; words: number; warnings: unknown[]; deferred: Deferral[]; conformance: Conformance | null; caster: CasterTrace | null; cicero: Measure[]; screens: Shot[]; confessions: Confession[]; printMs?: number; parts?: PrintParts };
+export type Printed = { bytes: Buffer; pages: number; words: number; warnings: unknown[]; deferred: Deferral[]; conformance: Conformance | null; archival: boolean; caster: CasterTrace | null; cicero: Measure[]; screens: Shot[]; confessions: Confession[]; printMs?: number; parts?: PrintParts };
 
 /** Where Caster's print step went, in milliseconds: {@link InPageParts}' four, then `cross`, the `evaluate` call's time beyond the page's own (the call and the answer's base64 serialised, carried over the protocol and parsed), and `decode`, the base64 back to bytes in node. */
 export type PrintParts = { ready: number; settled: number; caster: number; encode: number; cross: number; decode: number };
@@ -149,7 +149,7 @@ export async function cutAndPrint(page: Page, missing: Set<string>, flags: RunFl
     const sheet = chromiumSheet(await page.evaluate(pageSizesInPage));
     await page.evaluate(chromiumSheetInPage, sheet);
     const bytes = await page.pdf({ preferCSSPageSize: true, printBackground: true });
-    return { bytes, pages: await page.locator('beltype-page').count(), words: 0, warnings: [], deferred: [], conformance: null, caster: null, cicero: measures, screens, confessions: [] };
+    return { bytes, pages: await page.locator('beltype-page').count(), words: 0, warnings: [], deferred: [], conformance: null, archival: false, caster: null, cicero: measures, screens, confessions: [] };
   }
   const sent = performance.now();
   const printed = await page.evaluate(printInPage, { options: flags.caster, ...(o.created !== undefined ? { created: o.created } : {}), ...(o.sharedWriter ? { sharedWriter: true } : {}), ...(o.keepBlobs ? { keepBlobs: true } : {}) });
@@ -157,7 +157,7 @@ export async function cutAndPrint(page: Page, missing: Set<string>, flags: RunFl
   if ('refused' in printed) throw refusal(missing, printed);
   const bytes = Buffer.from(printed.base64, 'base64');
   const { page: inPage, ...parts } = printed.parts;
-  return { bytes, pages: printed.pages, words: printed.words, warnings: printed.warnings, deferred: printed.deferred, conformance: printed.conformance, caster: printed.caster, cicero: measures, screens, confessions: printed.confessions, printMs: printed.printMs, parts: { ...parts, cross: back - sent - inPage, decode: performance.now() - back } };
+  return { bytes, pages: printed.pages, words: printed.words, warnings: printed.warnings, deferred: printed.deferred, conformance: printed.conformance, archival: printed.archival, caster: printed.caster, cicero: measures, screens, confessions: printed.confessions, printMs: printed.printMs, parts: { ...parts, cross: back - sent - inPage, decode: performance.now() - back } };
 }
 
 /** The run's refusal: what it could not answer comes first, because a missing file's name says more than the step it broke. */
@@ -195,8 +195,8 @@ function within(dir: string, rel: string): string | null {
   return !landed.startsWith('..') && !path.isAbsolute(landed) ? file : null;
 }
 
-/** What a print's file claims, as Caster's report says it: `pdf-2.0; pdf-ua-2`, or `pdf-2.0` alone where the claim was not asked for or was withdrawn; `null` where Caster never saw the file (`--printer chromium`). */
-export const standardOf = (conformance: Conformance | null): string | null =>
-  conformance === null ? null : conformance === 'pdfua2' ? 'pdf-2.0; pdf-ua-2' : 'pdf-2.0';
+/** What a print's file claims, as Caster's report says it: `pdf-2.0`, then `pdf-ua-2` where that claim was asked for and not withdrawn, then `pdf-a-4` where the file is archival, as `pdf-2.0; pdf-ua-2; pdf-a-4`; `null` where Caster never saw the file (`--printer chromium`). */
+export const standardOf = (conformance: Conformance | null, archival = false): string | null =>
+  conformance === null ? null : ['pdf-2.0', ...(conformance === 'pdfua2' ? ['pdf-ua-2'] : []), ...(archival ? ['pdf-a-4'] : [])].join('; ');
 
 const isFile = (file: string) => fs.existsSync(file) && fs.statSync(file).isFile();

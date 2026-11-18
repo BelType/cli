@@ -81,6 +81,14 @@ test('Server-Timing: a metric a step, in order, the parts within the whole, and 
   }
 });
 
+test('a print under an archival claim names it, beside PDF/UA-2 or alone', async () => {
+  for (const [standard, says] of [['ua-2,a-4', 'pdf-2.0; pdf-ua-2; pdf-a-4'], ['a-4', 'pdf-2.0; pdf-a-4']] as const) {
+    const res = await fetch(`${server.url}/print`, { method: 'POST', body: paperForm({ 'caster.standard': standard }) });
+    assert.equal(res.status, 200, await res.clone().text());
+    assert.equal(res.headers.get('x-beltype-standard'), says);
+  }
+});
+
 test('a print under caster.standard=none says it claims PDF 2.0 alone', async () => {
   const res = await fetch(`${server.url}/print`, { method: 'POST', body: paperForm({ 'caster.standard': 'none' }) });
   assert.equal(res.status, 200, await res.clone().text());

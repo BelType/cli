@@ -465,7 +465,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       for (const warning of printed.warnings) log(`beltype serve: warning: ${typeof warning === 'string' ? warning : JSON.stringify(warning)}`);
       for (const deferral of printed.deferred) log(`beltype serve: ${deferralLine(deferral)}`);
       const timing = serverTiming(trace, printed, { read: asked - arrived, queue: began - asked, total: performance.now() - arrived, ...(worker !== undefined ? { worker } : {}) });
-      send(200, 'application/pdf', bytes, { 'server-timing': timing, 'x-beltype-pages': printed.pages, 'x-beltype-words': printed.words, 'x-beltype-warnings': printed.warnings.length, 'x-beltype-deferred': printed.deferred.length, ...standardHeader(printed.conformance) });
+      send(200, 'application/pdf', bytes, { 'server-timing': timing, 'x-beltype-pages': printed.pages, 'x-beltype-words': printed.words, 'x-beltype-warnings': printed.warnings.length, 'x-beltype-deferred': printed.deferred.length, ...standardHeader(printed.conformance, printed.archival) });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const status = error instanceof HttpError ? error.status : error instanceof BuildError ? 422 : error instanceof ValidationError || error instanceof FlagError ? 400 : 500;
@@ -554,8 +554,8 @@ function instant(value: string): string {
   return date.toISOString();
 }
 
-/** What the file claims, as Caster's report says it: `x-beltype-standard: pdf-2.0; pdf-ua-2`, or `pdf-2.0` alone where the claim was not asked for or was withdrawn. A print under `beltype.printer=chromium` is Chromium's own file, which Caster never saw, and carries no header. */
-export const standardHeader = (conformance: Conformance | null): Record<string, string> => {
-  const standard = standardOf(conformance);
+/** What the file claims, as Caster's report says it: `x-beltype-standard: pdf-2.0; pdf-ua-2`, with `; pdf-a-4` after it where the file is archival, or `pdf-2.0` alone where no claim was asked for or the one asked for was withdrawn. A print under `beltype.printer=chromium` is Chromium's own file, which Caster never saw, and carries no header. */
+export const standardHeader = (conformance: Conformance | null, archival = false): Record<string, string> => {
+  const standard = standardOf(conformance, archival);
   return standard === null ? {} : { 'x-beltype-standard': standard };
 };

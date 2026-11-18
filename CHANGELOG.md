@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.15 — 2026-11-18
+
+- **The print says the archival claim** (2026-11-18, Egildo's "Yes, name it"). `X-Beltype-Standard` and `beltype print`'s line name every claim the file makes: `pdf-2.0; pdf-ua-2; pdf-a-4` under `caster.standard=ua-2,a-4`, `pdf-2.0; pdf-a-4` under `a-4` alone, and what they read before everywhere else. Pins to Caster 0.2.11, whose report carries the claim; no file's bytes change.
+
 ## 0.1.14 — 2026-11-18
 
 - **Pins to Caster 0.2.10.** `caster.standard` names a list of claims: `ua-2` (the default), `a-4`, `ua-2,a-4` or `none` (ruled 2026-11-17, *the standard is a list* and *an archival claim is kept or refused* in `codeberg.org/BelType/decisions`). Under `a-4` the file is PDF/A-4 or the print is refused by name: a document that names no colour profile gets Caster's sRGB one (ruled 2026-11-18: "Yes, sRGB"), and a placed PDF page, CMYK with no CMYK profile and `caster.colour=off` are refused. Every file now carries the trailer's file identifier, so the bytes of every file change and its pages do not. `X-Beltype-Standard` and `beltype print`'s line do not yet name the archival claim: Caster's report carries the PDF/UA-2 claim alone, so a file printed under `a-4` reads `pdf-2.0`, or `pdf-2.0; pdf-ua-2` under both.
