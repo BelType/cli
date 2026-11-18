@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.14 — 2026-11-18
+
+- **Pins to Caster 0.2.10.** `caster.standard` names a list of claims: `ua-2` (the default), `a-4`, `ua-2,a-4` or `none` (ruled 2026-11-17, *the standard is a list* and *an archival claim is kept or refused* in `codeberg.org/BelType/decisions`). Under `a-4` the file is PDF/A-4 or the print is refused by name: a document that names no colour profile gets Caster's sRGB one (ruled 2026-11-18: "Yes, sRGB"), and a placed PDF page, CMYK with no CMYK profile and `caster.colour=off` are refused. Every file now carries the trailer's file identifier, so the bytes of every file change and its pages do not. `X-Beltype-Standard` and `beltype print`'s line do not yet name the archival claim: Caster's report carries the PDF/UA-2 claim alone, so a file printed under `a-4` reads `pdf-2.0`, or `pdf-2.0; pdf-ua-2` under both.
+
 ## 0.1.13 — 2026-11-17
 
 - **Pins to Caster 0.2.9.** Under the PDF/UA-2 claim a `<blockquote>`, a `<code>` and a `<q>` are tagged `BlockQuote`, `Code` and `Quote`, a table of contents (`role="doc-toc"`) is a `TOC` of `TOCI`, a link inside the document is a `Reference` naming its target, and a footnote and its call name each other, all in the PDF 1.7 namespace as the standard asks (ruled 2026-11-17: "Tags first", "Yes, Reference"). The pages do not change; the bytes of a file holding any of these do. Measured 2026-11-17 by the testbench's probe, four short runs of each in alternation: bills and the paper print at the same rate as under Caster 0.2.8, within 0.5 %.
