@@ -16,7 +16,7 @@ import { cliFlags, createdFromEnv, flagsHelp, parseFlagArgs } from './flags.ts';
 import { print } from './print.ts';
 import { serve, MERGE_ROADS, type MergeRoad } from './serve.ts';
 
-const USAGE = 'usage: beltype serve [--host 127.0.0.1] [--port 3000] [--max-upload 50] [--timeout 60] [--restart-after 100] [--workers 1] [--merge-road kept|seated|fresh] [--keep-fonts] [--allowed-hosts <name[:port],…>] [--no-sandbox]\n       beltype print <file.html> [-o <file.pdf>] [--printer caster|chromium] [--check[=report]] [--trace <file.json>] [--no-sandbox] [--flag <owner>.<name>=<value>]...';
+const USAGE = 'usage: beltype serve [--host 127.0.0.1] [--port 3000] [--max-upload 50] [--timeout 60] [--restart-after 100] [--workers 1] [--merge-road seated|kept|fresh] [--keep-fonts] [--allowed-hosts <name[:port],…>] [--no-sandbox]\n       beltype print <file.html> [-o <file.pdf>] [--printer caster|chromium] [--check[=report]] [--trace <file.json>] [--no-sandbox] [--flag <owner>.<name>=<value>]...';
 
 async function serveVerb(argv: string[]): Promise<void> {
   const { values } = parseArgs({ args: argv, options: {
@@ -26,7 +26,7 @@ async function serveVerb(argv: string[]): Promise<void> {
     timeout: { type: 'string', default: '60' },
     'restart-after': { type: 'string', default: '100' },
     workers: { type: 'string', default: '1' },
-    'merge-road': { type: 'string', default: 'kept' },
+    'merge-road': { type: 'string', default: 'seated' },
     'keep-fonts': { type: 'boolean' },
     'allowed-hosts': { type: 'string' },
     'no-sandbox': { type: 'boolean' }

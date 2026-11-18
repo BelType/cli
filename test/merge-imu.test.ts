@@ -55,7 +55,7 @@ function form(html: string): FormData {
 const log: string[] = [];
 let server: Awaited<ReturnType<typeof serve>>;
 before(async () => {
-  server = await serve({ host: '127.0.0.1', port: 0, maxUpload: 50 * 1024 * 1024, timeout: 60_000, restartAfter: 1000, log: (line) => log.push(line) });
+  server = await serve({ host: '127.0.0.1', port: 0, maxUpload: 50 * 1024 * 1024, timeout: 60_000, restartAfter: 1000, mergeRoad: 'kept', log: (line) => log.push(line) });
 });
 after(async () => {
   await server.close();
@@ -74,7 +74,7 @@ test('every copy from data matches batch.html pixel for pixel, in any order', as
   assert.equal(uploaded.status, 201, await uploaded.clone().text());
   const { template } = (await uploaded.json()) as { template: string };
   log.length = 0;
-  // Its running elements are lifted out of its one top-level box, so Cicero will not promise a patch and most of these are seated again; the road may improve, the pixels may not move.
+  // Its running elements are lifted out of its one top-level box, so on the kept road, which this server is asked for, Cicero will not promise a patch and most of these are seated again; the road may improve, the pixels may not move.
   const order = [0, 1, 2, 3, 4, 4, 2, 0, 3, 1];
   for (const [step, k] of order.entries()) {
     const pdf = await bytes(await fetch(`${server.url}/templates/${template}/print`, { method: 'POST', body: JSON.stringify({ ...copies[k], created: CREATED }) }));

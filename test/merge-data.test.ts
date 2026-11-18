@@ -1,4 +1,4 @@
-// A mail merge sent as data: one template uploaded once, each customer's values and rows as JSON, on the same page. Each PDF must be the one the folder route prints for that customer's merged document, byte for byte, in any order of customers, so nothing of the customer before can be left in it.
+// A mail merge sent as data: one template uploaded once, each customer's values and rows as JSON, on the same page. The file's own server is asked for the kept road, whose telling of changed boxes most of these tests are about; the default road, seated, and the fresh one are set against it at the end. Each PDF must be the one the folder route prints for that customer's merged document, byte for byte, in any order of customers, so nothing of the customer before can be left in it.
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -47,7 +47,7 @@ function mergedHtml(c: (typeof customers)[number]): string {
 const log: string[] = [];
 let server: Awaited<ReturnType<typeof serve>>;
 before(async () => {
-  server = await serve({ host: '127.0.0.1', port: 0, maxUpload: 50 * 1024 * 1024, timeout: 60_000, restartAfter: 1000, log: (line) => log.push(line) });
+  server = await serve({ host: '127.0.0.1', port: 0, maxUpload: 50 * 1024 * 1024, timeout: 60_000, restartAfter: 1000, mergeRoad: 'kept', log: (line) => log.push(line) });
 });
 after(async () => {
   await server.close();
@@ -170,13 +170,13 @@ test('the door refuses by name', async () => {
   assert.deepEqual(roads(), ['merge seated']);
 });
 
-test('the three roads give the same bytes: seated writes the template anew for every customer, fresh gives each a page of their own', async () => {
+test('the three roads give the same bytes, and seated is the road of a server asked for none', async () => {
   const kept = await upload(billForm(TEMPLATE));
   const order = [2, 0, 1, 1, 0];
   const want: Buffer[] = [];
   for (const k of order) want.push(await bytes(await printData(kept, { ...customers[k], created: CREATED })));
-  for (const mergeRoad of ['seated', 'fresh'] as const) {
-    const other = await serve({ host: '127.0.0.1', port: 0, maxUpload: 50 * 1024 * 1024, timeout: 60_000, restartAfter: 1000, mergeRoad, log: () => {} });
+  for (const [asked, mergeRoad] of [[{}, 'seated'], [{ mergeRoad: 'fresh' }, 'fresh']] as const) {
+    const other = await serve({ host: '127.0.0.1', port: 0, maxUpload: 50 * 1024 * 1024, timeout: 60_000, restartAfter: 1000, ...asked, log: () => {} });
     try {
       const made = await fetch(`${other.url}/templates`, { method: 'POST', body: billForm(TEMPLATE) });
       const { template } = (await made.json()) as { template: string };
