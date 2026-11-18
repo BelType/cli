@@ -1,6 +1,6 @@
 // The mail merge's soak: seeded customers with varied row counts, each printed on the three merge roads (`kept`, `seated`, `fresh`), and every PDF set against the one the same customer gets on a page of their own. Not a test of `npm test`: it runs minutes. `node test/soak-merge.ts [--customers 200] [--workers 3] [--clients 6] [--seed 1] [--keep-fonts]`.
 //
-// Two parts. One at a time: every customer on each road in a rotating order, one worker each, so the roads' times are a paired comparison under the same load, and the fresh road's bytes are the reference. Then under load: the kept and the seated road with several workers and clients, every customer twice in a shuffled order, a folder print of another document thrown in now and then, a browser restart every hundred prints, each PDF against the reference. It exits 1 on any difference.
+// Two parts. One at a time: every customer on each road in a rotating order, one worker each, so the roads' times are a paired comparison under the same load, and the fresh road's bytes are the reference. Then under load: each road with several workers and clients, every customer twice in a shuffled order, a folder print of another document thrown in now and then, a browser restart every hundred prints, each PDF against the reference. It exits 1 on any difference.
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -111,8 +111,8 @@ for (const road of ROADS) {
   console.log(`  ${road}: ${JSON.stringify(summary(walls[road]!))} ms a bill at the client; the server's steps, median: ${names.map((n) => `${n} ${summary(steps[road]![n]!).median}`).join(', ')}; roads taken ${JSON.stringify(taken[road])}`);
 }
 
-// Under load: several workers and clients, every customer twice in a shuffled order, a folder print now and then, a restart every hundred prints.
-for (const road of ['kept', 'seated'] as const) {
+// Under load: several workers and clients, every customer twice in a shuffled order, a folder print now and then, a restart every hundred prints, each road twice in a mirrored order so that none has the quieter half of the run.
+for (const road of ['kept', 'seated', 'fresh', 'fresh', 'seated', 'kept'] as const) {
   const server = await open(road, WORKERS, 100);
   const jobs = [...customers.keys(), ...customers.keys()];
   for (let i = jobs.length - 1; i > 0; i--) { const j = below(i + 1); [jobs[i], jobs[j]] = [jobs[j]!, jobs[i]!]; }
