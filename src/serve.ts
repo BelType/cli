@@ -24,7 +24,7 @@ import { ciceroFlags } from '@beltype/cicero/flags';
 import { BuildError, ValidationError, FlagError } from '@beltype/common/errors';
 import { cliFlags, createdFromEnv, parseFlagArgs, type Given } from './flags.ts';
 import { ARGS, ORIGIN, VIEWPORT, documentAssets, servedHtml, routeCompanions, routeDocument, printOnPage, cutAndPrint, refusal, deferralLine, standardOf, type Assets, type Printed } from './run.ts';
-import { keepMergeInPage, reseatInPage, seatMergeInPage, type Conformance, type Refusal } from './in-page.ts';
+import { keepMergeInPage, reseatInPage, seatMergeInPage, type Archival, type Conformance, type Refusal } from './in-page.ts';
 import type { MergeData } from './merge-tab.ts';
 
 /** `maxUpload` is in bytes and `timeout` in milliseconds here; the command line speaks megabytes and seconds. `sandbox` false launches Chromium without its sandbox, for a container that runs as root. `allowedHosts` are the `Host` values answered besides the bound address, each `name` (any port) or `name:port`; a wildcard bind answers them alone and will not start without one. `workers` is how many prints run at once, each in a browser of its own, one where it is not given. `mergeRoad` is how much of the customer before a mail merge's kept page carries to the next ({@link MergeRoad}), `seated` where it is not given. `keepFonts` has each worker's writer keep the font programs and pictures it has checked between prints (Caster's `formeKeepsBlobs`), under `caster.writer=forme` only; the file is the same either way. `onBrowser` is told each browser as it starts, for tests. */
@@ -481,7 +481,7 @@ export async function serve(options: ServeOptions): Promise<{ url: string; close
       for (const warning of printed.warnings) log(`beltype serve: warning: ${typeof warning === 'string' ? warning : JSON.stringify(warning)}`);
       for (const deferral of printed.deferred) log(`beltype serve: ${deferralLine(deferral)}`);
       const timing = serverTiming(trace, printed, { read: asked - arrived, queue: began - asked, total: performance.now() - arrived, ...(worker !== undefined ? { worker } : {}) });
-      send(200, 'application/pdf', bytes, { 'server-timing': timing, 'x-beltype-pages': printed.pages, 'x-beltype-words': printed.words, 'x-beltype-warnings': printed.warnings.length, 'x-beltype-deferred': printed.deferred.length, ...standardHeader(printed.conformance, printed.archival) });
+      send(200, 'application/pdf', bytes, { 'server-timing': timing, 'x-beltype-pages': printed.pages, 'x-beltype-words': printed.words, 'x-beltype-warnings': printed.warnings.length, 'x-beltype-deferred': printed.deferred.length, ...standardHeader(printed.conformance, printed.archival, printed.version) });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const status = error instanceof HttpError ? error.status : error instanceof BuildError ? 422 : error instanceof ValidationError || error instanceof FlagError ? 400 : 500;
@@ -570,8 +570,8 @@ function instant(value: string): string {
   return date.toISOString();
 }
 
-/** What the file claims, as Caster's report says it: `x-beltype-standard: pdf-2.0; pdf-ua-2`, with `; pdf-a-4` after it where the file is archival, or `pdf-2.0` alone where no claim was asked for or the one asked for was withdrawn. A print under `beltype.printer=chromium` is Chromium's own file, which Caster never saw, and carries no header. */
-export const standardHeader = (conformance: Conformance | null, archival = false): Record<string, string> => {
-  const standard = standardOf(conformance, archival);
+/** What the file claims, as Caster's report says it: `x-beltype-standard: pdf-2.0; pdf-ua-2`, with `; pdf-a-4` after it where the file is archival, `pdf-1.7; pdf-ua-1; pdf-a-2a` for the PDF 1.7 family, or `pdf-2.0` alone where no claim was asked for or the one asked for was withdrawn. A print under `beltype.printer=chromium` is Chromium's own file, which Caster never saw, and carries no header. */
+export const standardHeader = (conformance: Conformance | null, archival: Archival | null = null, version: '1.7' | null = null): Record<string, string> => {
+  const standard = standardOf(conformance, archival, version);
   return standard === null ? {} : { 'x-beltype-standard': standard };
 };

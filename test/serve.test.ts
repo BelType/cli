@@ -9,7 +9,7 @@ import path from 'node:path';
 import { specimen } from '@beltype/specimens';
 import { ValidationError } from '@beltype/common/errors';
 import { print } from '../src/print.ts';
-import { serve, keptRoad, WARMUP, WARMUP_FONT } from '../src/serve.ts';
+import { serve, keptRoad, standardHeader, WARMUP, WARMUP_FONT } from '../src/serve.ts';
 import { timing, wholeHoldsParts } from './server-timing.ts';
 
 // A temporary folder of this file's own. The timeout test counts the folders its server left in it, and the other test files, each a process run beside this one, start servers whose prints make theirs in the shared one (seen 2026-11-18: another file's folder counted as this server's leak).
@@ -92,6 +92,17 @@ test('a print under an archival claim names it, beside PDF/UA-2 or alone', async
     assert.equal(res.status, 200, await res.clone().text());
     assert.equal(res.headers.get('x-beltype-standard'), says);
   }
+});
+
+test('a print in the PDF 1.7 family names its version and each claim the file keeps', async () => {
+  for (const [standard, says] of [['ua-1', 'pdf-1.7; pdf-ua-1'], ['ua-1,a-2a', 'pdf-1.7; pdf-ua-1; pdf-a-2a'], ['a-2b', 'pdf-1.7; pdf-a-2b'], ['pdf-1.7', 'pdf-1.7']] as const) {
+    const res = await fetch(`${server.url}/print`, { method: 'POST', body: paperForm({ 'caster.standard': standard }) });
+    assert.equal(res.status, 200, await res.clone().text());
+    assert.equal(res.headers.get('x-beltype-standard'), says, standard);
+    assert.equal(Buffer.from(await res.arrayBuffer()).subarray(0, 8).toString('latin1'), '%PDF-1.7', standard);
+  }
+  assert.deepEqual(standardHeader('tagged', 'pdfa2u', '1.7'), { 'x-beltype-standard': 'pdf-1.7; pdf-a-2u' }, 'a guess that lowered PDF/A-2a and withdrew PDF/UA-1 names what is kept');
+  assert.deepEqual(standardHeader('pdfua2', 'pdfa4'), { 'x-beltype-standard': 'pdf-2.0; pdf-ua-2; pdf-a-4' }, 'a PDF 2.0 file reads as it did');
 });
 
 test('a print under caster.standard=none says it claims PDF 2.0 alone', async () => {

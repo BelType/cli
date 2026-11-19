@@ -69,8 +69,11 @@ export async function keepMergeInPage(data: MergeData): Promise<KeepAnswer | Ref
 /** A feature Caster drew differently or not at all, as its report's `deferred` names it: the element's path, the feature, and what it was painted as. */
 export type Deferral = { path: string; feature: string; paintedAs: string };
 
-/** What Caster's report says the file claims (*the printer guesses, says so, and withdraws the claim*, Caster's DESIGN.md S90): `'pdfua2'` a PDF/UA-2 file, `'tagged'` a tagged PDF 2.0 that claims nothing more. */
-export type Conformance = 'pdfua2' | 'tagged';
+/** What Caster's report says the file claims (*the printer guesses, says so, and withdraws the claim*, Caster's DESIGN.md S90): `'pdfua2'` a PDF/UA-2 file, `'pdfua1'` a PDF/UA-1 file (*the PDF 1.7 family joins the list*, Caster's S111), `'tagged'` a tagged file that claims nothing more. */
+export type Conformance = 'pdfua2' | 'pdfua1' | 'tagged';
+
+/** What Caster's report says the file keeps for archive: `'pdfa4'`, or a PDF/A-2 level, `'pdfa2b'`, `'pdfa2u'` or `'pdfa2a'` (S109, S111). */
+export type Archival = 'pdfa4' | 'pdfa2b' | 'pdfa2u' | 'pdfa2a';
 
 /** Where the page's time went in {@link printInPage}, in milliseconds of the page's clock. */
 export type InPageParts = { ready: number; settled: number; caster: number; encode: number; page: number };
@@ -83,7 +86,7 @@ export type CasterTrace = { ms: Record<string, number>; timing: unknown; fonts: 
  *
  * @param run - `options` is the resolved Caster flags; `created` is the instant the file says it was made, absent for the wall clock; `sharedWriter` has forme write through a `SharedWorker` the page opens (Caster's `formeSharedWorkerUrl()`), so a host that keeps the page's browser alive keeps the writer warm; `keepBlobs` asks that worker to keep the font programs and pictures it has checked between prints and has the page send only what it lacks (Caster's `formeKeepsBlobs`), ignored without `sharedWriter`. `printMs` in the answer is Caster's own time in the page, before the bytes are encoded; `parts` splits the page's whole time into `ready` (Caster's module and the writer's port), `settled` (the wait for Cicero's `settled()`), `caster` (`print()` itself) and `encode` (the bytes to base64), with `page` the whole, so a host can tell the crossing from what the page did; `confessions` is the report's, empty from a Caster that keeps none.
  */
-export async function printInPage(run: { options: Record<string, unknown>; created?: string; sharedWriter?: boolean; keepBlobs?: boolean }): Promise<{ base64: string; pages: number; words: number; warnings: unknown[]; deferred: Deferral[]; conformance: Conformance; archival: boolean; printMs: number; parts: InPageParts; caster: CasterTrace; confessions: Confession[] } | Refusal> {
+export async function printInPage(run: { options: Record<string, unknown>; created?: string; sharedWriter?: boolean; keepBlobs?: boolean }): Promise<{ base64: string; pages: number; words: number; warnings: unknown[]; deferred: Deferral[]; conformance: Conformance; archival: Archival | null; version: '1.7' | null; printMs: number; parts: InPageParts; caster: CasterTrace; confessions: Confession[] } | Refusal> {
   try {
     const t0 = performance.now();
     // @ts-expect-error a URL the page resolves, not a module the checker can find. A literal on purpose: a computed `import()` is wrapped by `rewriteRelativeImportExtensions` in a helper the page does not have.
@@ -100,7 +103,7 @@ export async function printInPage(run: { options: Record<string, unknown>; creat
     for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
     const base64 = btoa(binary);
     const t3 = performance.now();
-    return { base64, parts: { ready: ta - t0, settled: t1 - ta, caster: t2 - t1, encode: t3 - t2, page: t3 - t0 }, pages: printed.report.timing?.pages ?? 0, words: printed.report.timing?.words ?? 0, warnings: printed.report.warnings ?? [], deferred: printed.report.deferred ?? [], conformance: printed.report.conformance, archival: printed.report.archival === 'pdfa4', printMs, confessions: printed.report.confessions ?? [], caster: { ms: printed.report.ms ?? {}, timing: printed.report.timing ?? null, fonts: (printed.report.emission?.faces ?? []).map((f: { id: string; ms?: unknown }) => ({ id: f.id, ms: f.ms ?? null })) } };
+    return { base64, parts: { ready: ta - t0, settled: t1 - ta, caster: t2 - t1, encode: t3 - t2, page: t3 - t0 }, pages: printed.report.timing?.pages ?? 0, words: printed.report.timing?.words ?? 0, warnings: printed.report.warnings ?? [], deferred: printed.report.deferred ?? [], conformance: printed.report.conformance, archival: printed.report.archival ?? null, version: printed.report.version ?? null, printMs, confessions: printed.report.confessions ?? [], caster: { ms: printed.report.ms ?? {}, timing: printed.report.timing ?? null, fonts: (printed.report.emission?.faces ?? []).map((f: { id: string; ms?: unknown }) => ({ id: f.id, ms: f.ms ?? null })) } };
   } catch (error) {
     return { refused: String((error as Error | undefined)?.message ?? error), at: 'print' };
   }

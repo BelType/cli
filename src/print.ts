@@ -111,7 +111,7 @@ export async function print(input: string, output: string, options: PrintOptions
         check = await checkPages(screens, bytes, path.resolve(output).replace(/\.pdf$/i, '') + '.check', flags.beltype.printer, confessions);
         lap('check');
       }
-      return { output, pages, words, deferred: printed.deferred.length, standard: standardOf(conformance, printed.archival), ms: performance.now() - started, ...(check ? { check } : {}) };
+      return { output, pages, words, deferred: printed.deferred.length, standard: standardOf(conformance, printed.archival, printed.version), ms: performance.now() - started, ...(check ? { check } : {}) };
     } finally {
       await browser.close();
     }
