@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@beltype/caster':
-        specifier: 0.2.12
-        version: 0.2.12
+        specifier: 0.2.13
+        version: 0.2.13
       '@beltype/cicero':
         specifier: 0.1.16
         version: 0.1.16
@@ -48,8 +48,8 @@ packages:
   '@acemir/cssom@0.9.32':
     resolution: {integrity: sha512-OijrAUu7rrJhSIoHNg6LMPS5e344nwUHA+1EFYYjrh64D+GmytUsfBQjci45TjT+rd5Spsp8B5xsZDT+TgyXXQ==}
 
-  '@beltype/caster@0.2.12':
-    resolution: {integrity: sha512-o57TFt2E880SU3dvTKcbaiW/edfUiDE/WyW03GvLAWO6tx+8vE3ISR7VpJP9z02RRRKspEdP1Getem3zth0zeA==}
+  '@beltype/caster@0.2.13':
+    resolution: {integrity: sha512-q9Ja3LkIBxE9v3hwWgWF0mM2cxnjzAWjkay1KYG4YewidwBlKeoOtAlETV+f9K6vDmecUheg+LlSZhuEpA062w==}
     engines: {node: '>=22'}
 
   '@beltype/cicero@0.1.16':
@@ -574,7 +574,7 @@ snapshots:
 
   '@acemir/cssom@0.9.32': {}
 
-  '@beltype/caster@0.2.12':
+  '@beltype/caster@0.2.13':
     dependencies:
       '@beltype/common': 0.1.2
 
